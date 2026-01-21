@@ -1,1 +1,8 @@
 node_modules
+build/
+.env*
+*.log
+.DS_Store
+*.tsbuildinfo
+.wrangler/
+.pnpm-store/

@@ -1,20 +1,42 @@
 {
   "name": "nostr-publisher",
   "version": "0.0.0",
+  "packageManager": "pnpm@10.27.0",
+  "engines": {
+    "node": ">=20.0.0"
+  },
   "devDependencies": {
-    "wrangler": "2.10.0",
-    "typescript": "^5.3.3",
     "@cloudflare/workers-types": "^4.20231218.0",
-    "@types/node": "^20.11.0"
+    "@eslint/js": "^9.39.2",
+    "@types/node": "^20.11.0",
+    "@typescript-eslint/eslint-plugin": "^8.52.0",
+    "@typescript-eslint/parser": "^8.52.0",
+    "eslint": "^9.39.2",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-import": "^2.32.0",
+    "eslint-plugin-no-secrets": "^2.2.1",
+    "eslint-plugin-promise": "^7.2.1",
+    "eslint-plugin-sonarjs": "^3.0.5",
+    "eslint-plugin-unicorn": "^62.0.0",
+    "globals": "^17.0.0",
+    "prettier": "3.7.4",
+    "typescript": "^5.9.3",
+    "wrangler": "2.10.0"
   },
   "private": true,
   "scripts": {
     "start": "wrangler dev",
     "deploy": "wrangler publish",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint --cache --cache-location ./node_modules/.cache/eslint .",
+    "lint:fix": "eslint --fix .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "validate": "pnpm format:check && pnpm lint && pnpm typecheck",
+    "precheck": "pnpm lint && pnpm typecheck"
   },
   "dependencies": {
     "bech32": "^2.0.0",
-    "nostr-tools": "^1.7.4"
+    "nostr-tools": "^2.19.4"
   }
 }
