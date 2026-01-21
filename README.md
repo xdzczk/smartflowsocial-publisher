@@ -1,4 +1,4 @@
-# HTTP to Nostr Cloudflare worker
+# HTTP to Nostr Cloudflare worker (Vibe version)
 
 This [Cloudflare worker](https://workers.cloudflare.com/) exposes a HTTP interface to publish events to specified Nostr relays.
 The HTTP request is non-blocking and will immediatelly return. The events will be published asynchronously.
