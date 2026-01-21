@@ -1,5 +1,6 @@
 import js from '@eslint/js';
-import tseslint from 'typescript-eslint';
+import tseslint from '@typescript-eslint/eslint-plugin';
+import tsParser from '@typescript-eslint/parser';
 import importPlugin from 'eslint-plugin-import';
 import promisePlugin from 'eslint-plugin-promise';
 import unicornPlugin from 'eslint-plugin-unicorn';
@@ -8,18 +9,18 @@ import noSecretsPlugin from 'eslint-plugin-no-secrets';
 import prettierConfig from 'eslint-config-prettier';
 import globals from 'globals';
 
-export default tseslint.config(
+export default [
   {
     ignores: ['node_modules/**', 'build/**', '.wrangler/**', '*.config.js', '*.config.mjs'],
   },
   js.configs.recommended,
-  ...tseslint.configs.recommended,
-  prettierConfig,
   {
+    files: ['**/*.ts'],
     languageOptions: {
       globals: {
         ...globals.node,
       },
+      parser: tsParser,
       parserOptions: {
         ecmaVersion: 2022,
         sourceType: 'module',
@@ -27,6 +28,7 @@ export default tseslint.config(
       },
     },
     plugins: {
+      '@typescript-eslint': tseslint,
       import: importPlugin,
       promise: promisePlugin,
       unicorn: unicornPlugin,
@@ -55,14 +57,7 @@ export default tseslint.config(
       'import/order': [
         'error',
         {
-          groups: [
-            'builtin',
-            'external',
-            'internal',
-            'parent',
-            'sibling',
-            'index',
-          ],
+          groups: ['builtin', 'external', 'internal', 'parent', 'sibling', 'index'],
           'newlines-between': 'always',
           alphabetize: {
             order: 'asc',
@@ -112,4 +107,12 @@ export default tseslint.config(
       'no-var': 'error',
     },
   },
-);
+  prettierConfig,
+  {
+    files: ['**/*.d.ts'],
+    rules: {
+      'no-unused-vars': 'off',
+      '@typescript-eslint/no-unused-vars': 'off',
+    },
+  },
+];

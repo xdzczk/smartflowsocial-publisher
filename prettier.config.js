@@ -1,5 +1,6 @@
+// @ts-check
 /** @type {import('prettier').Config} */
-export default {
+const config = {
   semi: true,
   singleQuote: true,
   tabWidth: 2,
@@ -8,3 +9,5 @@ export default {
   arrowParens: 'always',
   endOfLine: 'lf',
 };
+
+module.exports = config;

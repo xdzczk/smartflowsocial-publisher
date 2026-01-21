@@ -1,18 +1,28 @@
 import type { Request, ExecutionContext } from '@cloudflare/workers-types';
-import { fetchProfiles, normalizeToHex, cleanURLs } from './utils';
+
 import type { Env, ProfileRequest, CacheMetadata } from './types';
+import { fetchProfiles, normalizeToHex, cleanURLs } from './utils';
 
 const HOUR = 60 * 60;
 
-export const getProfile = async (request: Request, env: Env, ctx: ExecutionContext): Promise<Response> => {
+export const getProfile = async (
+  request: Request,
+  env: Env,
+  ctx: ExecutionContext
+): Promise<Response> => {
   let body: unknown;
   try {
     body = await request.json();
-  } catch (e) {
+  } catch {
     return new Response('INVALID_REQUEST', { status: 400 });
   }
 
-  if (!body || typeof body !== 'object' || !('relays' in body) || !Array.isArray((body as ProfileRequest).relays)) {
+  if (
+    !body ||
+    typeof body !== 'object' ||
+    !('relays' in body) ||
+    !Array.isArray((body as ProfileRequest).relays)
+  ) {
     return new Response('INVALID_REQUEST', { status: 422 });
   }
 
@@ -20,7 +30,7 @@ export const getProfile = async (request: Request, env: Env, ctx: ExecutionConte
   const relayUrls = cleanURLs(profileRequest.relays);
   const pubkey = normalizeToHex(profileRequest.pubkey);
 
-  if (!relayUrls || relayUrls.length === 0 || !pubkey) {
+  if (relayUrls.length === 0 || !pubkey) {
     return new Response('INVALID_REQUEST', { status: 422 });
   }
 
@@ -28,11 +38,13 @@ export const getProfile = async (request: Request, env: Env, ctx: ExecutionConte
     return env.PROFILES.put(key, data, {
       metadata: { createdAt: Date.now() },
       // key expires after 7 days
-      expirationTtl: 7 * 24 * HOUR
+      expirationTtl: 7 * 24 * HOUR,
     });
   };
 
-  const getCache = async (key: string): Promise<{ value: string | null; metadata: CacheMetadata | null }> => {
+  const getCache = async (
+    key: string
+  ): Promise<{ value: string | null; metadata: CacheMetadata | null }> => {
     return await env.PROFILES.getWithMetadata(key);
   };
 
@@ -47,13 +59,13 @@ export const getProfile = async (request: Request, env: Env, ctx: ExecutionConte
   };
 
   const cacheResult = await getCache(pubkey);
-  if (!cacheResult || !cacheResult.value) {
+  if (!cacheResult.value) {
     ctx.waitUntil(fetchAndCache(pubkey, relayUrls));
     return new Response(null, {
       status: 202,
       headers: {
         'content-type': 'application/json;charset=UTF-8',
-      }
+      },
     });
   }
 
@@ -64,9 +76,9 @@ export const getProfile = async (request: Request, env: Env, ctx: ExecutionConte
   }
 
   return new Response(value, {
-    status: (value ? 200 : 202),
+    status: value ? 200 : 202,
     headers: {
       'content-type': 'application/json;charset=UTF-8',
-    }
+    },
   });
 };

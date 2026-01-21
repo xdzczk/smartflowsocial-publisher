@@ -5,17 +5,17 @@ declare module 'bech32' {
     words: number[];
   }
 
-  export function decode(str: string, limit?: number): Decoded;
-  export function fromWords(words: number[]): number[];
-  export function toWords(bytes: number[]): number[];
-  export function encode(prefix: string, words: number[], limit?: number): string;
+  export function decode(_str: string, _limit?: number): Decoded;
+  export function fromWords(_words: number[]): number[];
+  export function toWords(_bytes: number[]): number[];
+  export function encode(_prefix: string, _words: number[], _limit?: number): string;
 
   // Default export for namespace import
   const bech32: {
-    decode: (str: string, limit?: number) => Decoded;
-    fromWords: (words: number[]) => number[];
-    toWords: (bytes: number[]) => number[];
-    encode: (prefix: string, words: number[], limit?: number) => string;
+    decode: (_str: string, _limit?: number) => Decoded;
+    fromWords: (_words: number[]) => number[];
+    toWords: (_bytes: number[]) => number[];
+    encode: (_prefix: string, _words: number[], _limit?: number) => string;
   };
   export default bech32;
 }
