@@ -1,0 +1,20 @@
+{
+  "name": "nostr-publisher",
+  "version": "0.0.0",
+  "devDependencies": {
+    "wrangler": "2.10.0",
+    "typescript": "^5.3.3",
+    "@cloudflare/workers-types": "^4.20231218.0",
+    "@types/node": "^20.11.0"
+  },
+  "private": true,
+  "scripts": {
+    "start": "wrangler dev",
+    "deploy": "wrangler publish",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "bech32": "^2.0.0",
+    "nostr-tools": "^1.7.4"
+  }
+}
