@@ -1,163 +1,18 @@
 import * as bech32 from 'bech32';
-import { Relay } from 'nostr-tools';
-import type { Event } from 'nostr-tools';
-
-export const cleanURLs = (urls: unknown): string[] => {
-  if (!urls || !Array.isArray(urls)) {
-    return [];
-  }
-  return urls
-    .map((url) => {
-      try {
-        return new URL(url as string).origin;
-      } catch (e) {
-        console.error(e);
-        return null;
-      }
-    })
-    .filter((u): u is string => u !== null); // filter falsy values;
-};
 
 /**
- * Normalizes a single relay URL
+ * Decodes bech32 string to hex or utf-8
  */
-const normalizeSingleRelay = (relay: string): string | null => {
-  // Trim whitespace
-  let url = relay.trim();
-
-  // Skip empty strings
-  if (!url) {
-    return null;
-  }
-
-  // Remove trailing slash
-  url = url.replace(/\/+$/, '');
-
-  try {
-    // Parse URL to validate and normalize
-    const urlObj = new URL(url);
-
-    // Ensure wss:// scheme (reject non-wss)
-    if (urlObj.protocol !== 'wss:') {
-      // Try to convert http/https/ws to wss
-      if (urlObj.protocol === 'ws:') {
-        urlObj.protocol = 'wss:';
-      } else if (urlObj.protocol === 'http:') {
-        urlObj.protocol = 'wss:';
-        urlObj.port = '';
-      } else if (urlObj.protocol === 'https:') {
-        urlObj.protocol = 'wss:';
-        urlObj.port = '';
-      } else {
-        // Reject non-wss protocols
-        return null;
-      }
-    }
-
-    // Reconstruct URL without trailing slash
-    return urlObj.toString().replace(/\/+$/, '');
-  } catch {
-    // Invalid URL, skip
-    return null;
-  }
-};
-
-/**
- * Normalizes relay URLs for publishing:
- * - Ensures wss:// scheme (rejects non-wss)
- * - Trims whitespace
- * - Removes trailing /
- * - Deduplicates
- * - Caps at max 12 relays
- */
-export const normalizeRelays = (relays: unknown): string[] => {
-  if (!relays || !Array.isArray(relays)) {
-    throw new Error('relays must be an array');
-  }
-
-  const MAX_RELAYS = 12;
-  const normalized = new Set<string>();
-
-  for (const relay of relays) {
-    if (typeof relay !== 'string') {
-      continue;
-    }
-
-    const normalizedUrl = normalizeSingleRelay(relay);
-    if (normalizedUrl) {
-      normalized.add(normalizedUrl);
-
-      // Cap at max relays
-      if (normalized.size >= MAX_RELAYS) {
-        break;
-      }
-    }
-  }
-
-  return Array.from(normalized);
-};
-
-const fetchProfileFromRelay = async (pubkey: string, url: string): Promise<Event> => {
-  console.info(`Fetching ${pubkey}'s info from ${url}`);
-  const relay = new Relay(url);
-  const timeout = 5000;
-
-  try {
-    // Connect with timeout
-    const connectPromise = relay.connect();
-    const timeoutPromise = new Promise<never>((_, reject) => {
-      setTimeout(() => reject(new Error(`Timeout fetching profile from ${url}`)), timeout);
-    });
-
-    await Promise.race([connectPromise, timeoutPromise]);
-    console.info(`connected to ${url}`);
-
-    // Wait for event with timeout
-    return new Promise<Event>((resolve, reject) => {
-      let subscription: ReturnType<typeof relay.subscribe> | null = null;
-
-      const eventTimeout = setTimeout(() => {
-        if (subscription) {
-          subscription.close();
-        }
-        relay.close();
-        reject(new Error(`Timeout waiting for profile event from ${url}`));
-      }, timeout);
-
-      // Subscribe to get the profile
-      subscription = relay.subscribe([{ limit: 1, kinds: [0], authors: [pubkey] }], {
-        onevent: (ev: Event) => {
-          console.info(`Fetched ${pubkey}'s info from ${url}`);
-          clearTimeout(eventTimeout);
-          if (subscription) {
-            subscription.close();
-          }
-          relay.close();
-          resolve(ev);
-        },
-        onclose: (reason: string) => {
-          clearTimeout(eventTimeout);
-          relay.close();
-          reject(new Error(`Subscription closed: ${reason}`));
-        },
-      });
-    });
-  } catch (error) {
-    relay.close();
-    throw error;
-  }
-};
-
-export const fetchProfiles = (pubkey: string, urls: string[]): Promise<Event>[] => {
-  return urls.map((url) => fetchProfileFromRelay(pubkey, url));
-};
-
 const bech32Decode = (str: string, encoding: 'utf-8' | 'hex' = 'utf-8'): string => {
   const { words: dataPart } = bech32.decode(str, 2000);
   const requestByteArray = bech32.fromWords(dataPart);
   return Buffer.from(requestByteArray).toString(encoding);
 };
 
+/**
+ * Normalizes a string to hex format
+ * Handles bech32 encoded strings (npub, nsec, note prefixes)
+ */
 export const normalizeToHex = (str: unknown): string | undefined => {
   if (!str || typeof str !== 'string') {
     return undefined;
@@ -168,7 +23,8 @@ export const normalizeToHex = (str: unknown): string | undefined => {
     try {
       return bech32Decode(str, 'hex');
     } catch {
-      console.info('ignoring bech32 parsing error');
+      // Ignore bech32 parsing errors
+      return undefined;
     }
   }
   return str;

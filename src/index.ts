@@ -1,33 +1,38 @@
 import type { ExportedHandler } from '@cloudflare/workers-types';
 
-import { getProfile } from './getProfile';
-import { publishEvent } from './publishEvent';
+import { ConsoleLogger } from './observability/logger';
+import { profileHandler, publishHandler } from './transport/http/handlers';
 import type { Env } from './types';
 
 const handler: ExportedHandler<Env> = {
   async fetch(request, env, ctx) {
+    const logger = new ConsoleLogger();
     const pathname = new URL(request.url).pathname;
 
+    // Auth check
     const apiToken = request.headers.get('API-TOKEN');
     if (apiToken !== env.API_TOKEN && env.API_TOKEN) {
       return new Response('INVALID_TOKEN', { status: 403 });
     }
+
+    // Only POST allowed
     if (request.method !== 'POST') {
       return new Response('Sooner and later you will see great changes made.', { status: 404 });
     }
 
+    // Route to handlers
     if (pathname === '/' || pathname === '/publish') {
       try {
-        return await publishEvent(request, env, ctx);
+        return await publishHandler(request, env, ctx);
       } catch (e) {
-        console.error('Error in publishEvent:', e);
+        logger.error('Error in publishHandler:', e);
         return new Response('Internal Server Error', { status: 500 });
       }
     } else if (pathname === '/profile') {
       try {
-        return await getProfile(request, env, ctx);
+        return await profileHandler(request, env, ctx);
       } catch (e) {
-        console.error('Error in getProfile:', e);
+        logger.error('Error in profileHandler:', e);
         return new Response('Internal Server Error', { status: 500 });
       }
     } else {
