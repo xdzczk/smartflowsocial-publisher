@@ -5,8 +5,9 @@ import type { Event } from 'nostr-tools';
 import type { Env, PublishRequest, RelayPublishResult, PublishResponse, ErrorResponse } from './types';
 import { normalizeRelays } from './utils';
 
-const PER_RELAY_TIMEOUT_MS = 3000;
-const OVERALL_TIMEOUT_MS = 5000;
+const PER_RELAY_TIMEOUT_MS = 10000; // Increased to 10s to allow for connection establishment
+const CONNECTION_TIMEOUT_MS = 5000; // Timeout for initial connection
+const OVERALL_TIMEOUT_MS = 15000; // Increased overall timeout to 15s
 const MAX_CONCURRENT = 8;
 
 /**
@@ -27,6 +28,50 @@ const validateEvent = (event: unknown): event is Event => {
 };
 
 /**
+ * Sets up event handlers for a relay connection
+ */
+const setupRelayHandlers = (
+  relay: Relay,
+  relayUrl: string,
+  event: Event,
+  eventId: string,
+  connected: { value: boolean },
+  connectionTimeoutId: { value: ReturnType<typeof setTimeout> | null },
+  // eslint-disable-next-line no-unused-vars
+  finish: (ok: boolean, error?: string) => void
+): void => {
+  relay.on('connect', () => {
+    connected.value = true;
+    if (connectionTimeoutId.value) {
+      clearTimeout(connectionTimeoutId.value);
+      connectionTimeoutId.value = null;
+    }
+    console.info(`Sending ${eventId} to ${relayUrl}`);
+    const pub = relay.publish(event);
+    pub.on('ok', () => {
+      console.info(`Event ${eventId} published to ${relayUrl}`);
+      finish(true);
+    });
+    pub.on('failed', (reason?: string) => {
+      console.warn(`Failed to publish ${eventId} to ${relayUrl}: ${reason}`);
+      finish(false, reason ?? 'RELAY_REJECTED');
+    });
+  });
+
+  relay.on('error', (msg: unknown) => {
+    console.error(`Failed to connect to ${relayUrl}`, JSON.stringify(msg));
+    finish(false, `CONNECTION_ERROR: ${JSON.stringify(msg)}`);
+  });
+
+  relay.on('disconnect', () => {
+    if (!connected.value) {
+      console.warn(`Disconnected from ${relayUrl} before connection established`);
+      finish(false, 'DISCONNECTED');
+    }
+  });
+};
+
+/**
  * Publishes an event to a single relay and returns the result
  */
 const publishToRelay = async (
@@ -40,11 +85,17 @@ const publishToRelay = async (
   return new Promise<RelayPublishResult>((resolve) => {
     const relay = new Relay(relayUrl);
     let timeoutId: ReturnType<typeof setTimeout> | null = null;
+    const connectionTimeoutId = { value: null as ReturnType<typeof setTimeout> | null };
+    const connected = { value: false };
 
     const cleanup = () => {
       if (timeoutId) {
         clearTimeout(timeoutId);
         timeoutId = null;
+      }
+      if (connectionTimeoutId.value) {
+        clearTimeout(connectionTimeoutId.value);
+        connectionTimeoutId.value = null;
       }
       try {
         relay.close();
@@ -68,30 +119,27 @@ const publishToRelay = async (
       });
     };
 
-    // Per-relay timeout
+    // Overall timeout for the entire operation
     timeoutId = setTimeout(() => {
       finish(false, 'TIMEOUT');
     }, PER_RELAY_TIMEOUT_MS);
 
-    relay.on('connect', () => {
-      console.info(`Sending ${eventId} to ${relayUrl}`);
-      const pub = relay.publish(event);
-      pub.on('ok', () => {
-        console.info(`Event ${eventId} published to ${relayUrl}`);
-        finish(true);
-      });
-      pub.on('failed', (reason?: string) => {
-        console.warn(`Failed to publish ${eventId} to ${relayUrl}: ${reason}`);
-        finish(false, reason ?? 'RELAY_REJECTED');
-      });
-    });
+    // Connection timeout - if we don't connect within this time, fail
+    connectionTimeoutId.value = setTimeout(() => {
+      if (!connected.value) {
+        console.error(`Connection timeout: failed to connect to ${relayUrl} within ${CONNECTION_TIMEOUT_MS}ms`);
+        finish(false, 'CONNECTION_TIMEOUT');
+      }
+    }, CONNECTION_TIMEOUT_MS);
 
-    relay.on('error', (msg: unknown) => {
-      console.error(`Failed to connect to ${relayUrl}`, JSON.stringify(msg));
-      finish(false, `CONNECTION_ERROR: ${JSON.stringify(msg)}`);
-    });
+    setupRelayHandlers(relay, relayUrl, event, eventId, connected, connectionTimeoutId, finish);
 
-    void relay.connect();
+    // Handle connect() promise rejection
+    // eslint-disable-next-line promise/prefer-await-to-then, promise/prefer-await-to-callbacks
+    relay.connect().catch((error: unknown) => {
+      console.error(`relay.connect() rejected for ${relayUrl}`, error);
+      finish(false, `CONNECTION_ERROR: ${error instanceof Error ? error.message : String(error)}`);
+    });
   });
 };
 
@@ -135,23 +183,15 @@ const limitConcurrency = async <T>(
   return results;
 };
 
-export const publishEvent = async (
-  request: Request,
-  // eslint-disable-next-line no-unused-vars
-  _env: Env,
-  // eslint-disable-next-line no-unused-vars
-  _ctx: ExecutionContext
-): Promise<Response> => {
-  // Parse JSON body
+/**
+ * Validates and parses the request body
+ */
+const parseAndValidateRequest = async (request: Request): Promise<{ event: Event; relayUrls: string[] } | ErrorResponse> => {
   let body: unknown;
   try {
     body = await request.json();
   } catch {
-    const errorResponse: ErrorResponse = { error: 'Invalid JSON body' };
-    return new Response(JSON.stringify(errorResponse), {
-      status: 400,
-      headers: { 'Content-Type': 'application/json' },
-    });
+    return { error: 'Invalid JSON body' };
   }
 
   // Validate body structure
@@ -163,11 +203,7 @@ export const publishEvent = async (
     !('event' in body) ||
     !(body as { event: unknown }).event
   ) {
-    const errorResponse: ErrorResponse = { error: 'Invalid request: relays must be an array and event must be an object' };
-    return new Response(JSON.stringify(errorResponse), {
-      status: 400,
-      headers: { 'Content-Type': 'application/json' },
-    });
+    return { error: 'Invalid request: relays must be an array and event must be an object' };
   }
 
   const publishRequest = body as PublishRequest;
@@ -175,11 +211,7 @@ export const publishEvent = async (
 
   // Validate event has required fields
   if (!validateEvent(event)) {
-    const errorResponse: ErrorResponse = { error: 'Invalid event: must have id, pubkey, kind, and sig fields' };
-    return new Response(JSON.stringify(errorResponse), {
-      status: 400,
-      headers: { 'Content-Type': 'application/json' },
-    });
+    return { error: 'Invalid event: must have id, pubkey, kind, and sig fields' };
   }
 
   // Normalize relays
@@ -187,22 +219,35 @@ export const publishEvent = async (
   try {
     relayUrls = normalizeRelays(publishRequest.relays);
   } catch (error) {
-    const errorResponse: ErrorResponse = {
+    return {
       error: error instanceof Error ? error.message : 'Invalid relays array',
     };
-    return new Response(JSON.stringify(errorResponse), {
+  }
+
+  if (relayUrls.length === 0) {
+    return { error: 'No valid relays after normalization' };
+  }
+
+  return { event, relayUrls };
+};
+
+export const publishEvent = async (
+  request: Request,
+  // eslint-disable-next-line no-unused-vars
+  _env: Env,
+  // eslint-disable-next-line no-unused-vars
+  _ctx: ExecutionContext
+): Promise<Response> => {
+  // Parse and validate request
+  const validationResult = await parseAndValidateRequest(request);
+  if ('error' in validationResult) {
+    return new Response(JSON.stringify(validationResult), {
       status: 400,
       headers: { 'Content-Type': 'application/json' },
     });
   }
 
-  if (relayUrls.length === 0) {
-    const errorResponse: ErrorResponse = { error: 'No valid relays after normalization' };
-    return new Response(JSON.stringify(errorResponse), {
-      status: 400,
-      headers: { 'Content-Type': 'application/json' },
-    });
-  }
+  const { event, relayUrls } = validationResult;
 
   const eventId = event.id;
   console.info(`Processing ${eventId} to ${relayUrls.length} relay(s)`);
@@ -230,7 +275,12 @@ export const publishEvent = async (
   });
 
   // Race between publishing and overall timeout
-  await Promise.race([publishPromise, timeoutPromise]);
+  try {
+    await Promise.race([publishPromise, timeoutPromise]);
+  } catch (error) {
+    console.error('Error during publish promise:', error);
+    // Continue to return results even if there was an error
+  }
 
   // If overall timeout hit, mark remaining relays as TIMEOUT
   const elapsed = Date.now() - startTime;
@@ -242,6 +292,22 @@ export const publishEvent = async (
         latencyMs: Math.min(elapsed, OVERALL_TIMEOUT_MS),
         error: 'TIMEOUT',
       });
+    }
+  }
+
+  // Ensure we have results for all relays
+  if (results.length !== relayUrls.length) {
+    console.warn(`Expected ${relayUrls.length} results but got ${results.length}`);
+    // Add missing results
+    for (const relayUrl of relayUrls) {
+      if (!results.some((r) => r.relay === relayUrl)) {
+        results.push({
+          relay: relayUrl,
+          ok: false,
+          latencyMs: elapsed,
+          error: 'TIMEOUT',
+        });
+      }
     }
   }
 

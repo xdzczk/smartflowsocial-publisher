@@ -1,4 +1,4 @@
 name = "nostr-publisher"
 main = "src/index.ts"
 compatibility_date = "2023-02-21"
-node_compat = true
+compatibility_flags = ["nodejs_compat"]
