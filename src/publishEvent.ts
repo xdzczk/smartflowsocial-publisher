@@ -5,6 +5,13 @@ import type { Event } from 'nostr-tools';
 import type { Env, PublishRequest, RelayPublishResult, PublishResponse, ErrorResponse } from './types';
 import { normalizeRelays } from './utils';
 
+// Check if WebSocket is available and log for debugging
+if (typeof WebSocket === 'undefined') {
+  console.warn('WebSocket is not available in this environment');
+} else {
+  console.info('WebSocket is available:', typeof WebSocket);
+}
+
 const PER_RELAY_TIMEOUT_MS = 10000; // Increased to 10s to allow for connection establishment
 const CONNECTION_TIMEOUT_MS = 5000; // Timeout for initial connection
 const OVERALL_TIMEOUT_MS = 15000; // Increased overall timeout to 15s
@@ -40,23 +47,29 @@ const setupRelayHandlers = (
   // eslint-disable-next-line no-unused-vars
   finish: (ok: boolean, error?: string) => void
 ): void => {
-  relay.on('connect', () => {
-    connected.value = true;
-    if (connectionTimeoutId.value) {
-      clearTimeout(connectionTimeoutId.value);
-      connectionTimeoutId.value = null;
-    }
-    console.info(`Sending ${eventId} to ${relayUrl}`);
-    const pub = relay.publish(event);
-    pub.on('ok', () => {
-      console.info(`Event ${eventId} published to ${relayUrl}`);
-      finish(true);
+    relay.on('connect', () => {
+      console.info(`[${relayUrl}] 'connect' event fired`);
+      connected.value = true;
+      if (connectionTimeoutId.value) {
+        clearTimeout(connectionTimeoutId.value);
+        connectionTimeoutId.value = null;
+      }
+      console.info(`[${relayUrl}] Sending ${eventId} to relay`);
+      try {
+        const pub = relay.publish(event);
+        pub.on('ok', () => {
+          console.info(`[${relayUrl}] Event ${eventId} published successfully`);
+          finish(true);
+        });
+        pub.on('failed', (reason?: string) => {
+          console.warn(`[${relayUrl}] Failed to publish ${eventId}: ${reason}`);
+          finish(false, reason ?? 'RELAY_REJECTED');
+        });
+      } catch (error) {
+        console.error(`[${relayUrl}] Error calling relay.publish():`, error);
+        finish(false, `PUBLISH_ERROR: ${error instanceof Error ? error.message : String(error)}`);
+      }
     });
-    pub.on('failed', (reason?: string) => {
-      console.warn(`Failed to publish ${eventId} to ${relayUrl}: ${reason}`);
-      finish(false, reason ?? 'RELAY_REJECTED');
-    });
-  });
 
   relay.on('error', (msg: unknown) => {
     console.error(`Failed to connect to ${relayUrl}`, JSON.stringify(msg));
@@ -83,7 +96,23 @@ const publishToRelay = async (
   let resolved = false;
 
   return new Promise<RelayPublishResult>((resolve) => {
-    const relay = new Relay(relayUrl);
+    console.info(`[${relayUrl}] Creating Relay instance`);
+    let relay: Relay;
+    try {
+      relay = new Relay(relayUrl);
+      console.info(`[${relayUrl}] Relay instance created`);
+    } catch (error) {
+      console.error(`[${relayUrl}] Failed to create Relay instance:`, error);
+      const latencyMs = Date.now() - startTime;
+      resolve({
+        relay: relayUrl,
+        ok: false,
+        latencyMs,
+        error: `RELAY_INIT_ERROR: ${error instanceof Error ? error.message : String(error)}`,
+      });
+      return;
+    }
+
     let timeoutId: ReturnType<typeof setTimeout> | null = null;
     const connectionTimeoutId = { value: null as ReturnType<typeof setTimeout> | null };
     const connected = { value: false };
@@ -121,6 +150,7 @@ const publishToRelay = async (
 
     // Overall timeout for the entire operation
     timeoutId = setTimeout(() => {
+      console.warn(`[${relayUrl}] Overall timeout reached after ${PER_RELAY_TIMEOUT_MS}ms`);
       finish(false, 'TIMEOUT');
     }, PER_RELAY_TIMEOUT_MS);
 
@@ -135,9 +165,11 @@ const publishToRelay = async (
     setupRelayHandlers(relay, relayUrl, event, eventId, connected, connectionTimeoutId, finish);
 
     // Handle connect() promise rejection
+    console.info(`[${relayUrl}] Calling relay.connect()`);
+    // We can't use await here since we're in a Promise constructor
     // eslint-disable-next-line promise/prefer-await-to-then, promise/prefer-await-to-callbacks
     relay.connect().catch((error: unknown) => {
-      console.error(`relay.connect() rejected for ${relayUrl}`, error);
+      console.error(`[${relayUrl}] relay.connect() rejected:`, error);
       finish(false, `CONNECTION_ERROR: ${error instanceof Error ? error.message : String(error)}`);
     });
   });
