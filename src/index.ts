@@ -181,12 +181,13 @@ const handler: ExportedHandler<Env> = {
     try {
       validateEnvironment(env, logger);
     } catch (error) {
-      logger.error('Environment validation failed:', error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      logger.error(`Environment validation failed: ${errorMessage}`, { error });
       return new Response(
         JSON.stringify({
           error: 'Server configuration error',
           code: 'CONFIGURATION_ERROR',
-          details: { message: error instanceof Error ? error.message : String(error) },
+          details: { message: errorMessage },
         }),
         {
           status: 500,

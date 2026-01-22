@@ -17,3 +17,9 @@ invocation_logs = true
 enabled = false
 persist = true
 head_sampling_rate = 1
+
+# KV namespace bindings
+[[kv_namespaces]]
+binding = "PROFILES"
+id = "09f055c2671d4bf3a73a958a6a72cbea"
+preview_id = "64fa8e6497904ac39f7f12299e5e8697"
