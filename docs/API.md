@@ -2,6 +2,8 @@
 
 Complete API reference for the HTTP to Nostr Publisher service.
 
+> 📖 **See Also**: [README.md](../README.md) for quick start and overview. [ARCHITECTURE.md](ARCHITECTURE.md) for system design details.
+
 ## Base URL
 
 All endpoints are relative to the worker deployment URL.
@@ -43,8 +45,7 @@ Publishes a single signed Nostr event to multiple relays.
     "tags": [],
     "sig": "128-character-hex-signature"
   },
-  "correlationId": "optional-correlation-id",
-  "returnPerRelayResults": true
+  "correlationId": "optional-correlation-id"
 }
 ```
 
@@ -52,7 +53,6 @@ Publishes a single signed Nostr event to multiple relays.
 - `relays` (required, array): Array of relay WebSocket URLs. Maximum 12 relays. URLs are normalized (trimmed, deduplicated, `wss://` scheme enforced).
 - `event` (required, object): Signed Nostr event. Must include `id`, `pubkey`, `kind`, `sig`, `created_at`, `content`, `tags`.
 - `correlationId` (optional, string): Correlation ID for request tracking.
-- `returnPerRelayResults` (optional, boolean): Whether to return per-relay results (default: `true`).
 
 #### Response
 
@@ -93,9 +93,31 @@ Publishes a single signed Nostr event to multiple relays.
 }
 ```
 
-**Response Headers:**
-- `X-Request-ID`: Correlation ID for request tracking
-- `X-Response-Time`: Response time in milliseconds
+## Request/Response Headers
+
+### Request Headers
+
+| Header | Required | Description | Example |
+|--------|----------|-------------|---------|
+| `Content-Type` | Yes | Must be `application/json` | `Content-Type: application/json` |
+| `API-TOKEN` | Conditional | Required if `API_TOKEN` env var is set | `API-TOKEN: your-secret-token` |
+| `X-Request-ID` | No | Correlation ID for request tracking | `X-Request-ID: req-12345` |
+| `X-Correlation-ID` | No | Alternative correlation ID header | `X-Correlation-ID: req-12345` |
+
+### Response Headers
+
+| Header | Description | Example |
+|--------|-------------|---------|
+| `X-Request-ID` | Correlation ID for request tracking (echoed from request or generated) | `X-Request-ID: req-12345` |
+| `X-Response-Time` | Response time in milliseconds | `X-Response-Time: 145ms` |
+| `Content-Type` | Response content type (always `application/json`) | `Content-Type: application/json` |
+| `Retry-After` | Seconds until rate limit resets (only on 429 responses) | `Retry-After: 60` |
+
+### Header Validation
+
+- **Content-Type**: Must be exactly `application/json` for POST requests
+- **API-TOKEN**: Must match `API_TOKEN` environment variable if set
+- **X-Request-ID / X-Correlation-ID**: Any string value accepted, used for tracing
 
 #### Limits
 
@@ -242,10 +264,24 @@ Fetches a Nostr profile (kind 0 event) for a given pubkey.
 #### Response
 
 **Cached (200 OK):**
-Returns the cached profile event immediately.
+Returns the cached profile event immediately as a Nostr event JSON object:
+
+```json
+{
+  "id": "64-character-hex-string",
+  "pubkey": "64-character-hex-string",
+  "kind": 0,
+  "created_at": 1234567890,
+  "content": "{\"name\":\"Alice\",\"about\":\"Developer\",\"picture\":\"https://example.com/avatar.jpg\"}",
+  "tags": [],
+  "sig": "128-character-hex-signature"
+}
+```
+
+The `content` field contains a JSON string with profile metadata (name, about, picture, etc.).
 
 **Not Cached (202 Accepted):**
-Returns empty body. Profile is fetched asynchronously and cached for future requests.
+Returns empty body. Profile is fetched asynchronously and cached for future requests. Retry the request after a few seconds to get the cached profile.
 
 **Error (400 Bad Request):**
 ```json
@@ -288,39 +324,146 @@ No body required.
 
 ## Error Codes
 
-| Code | HTTP Status | Description |
-|------|-------------|-------------|
-| `VALIDATION_ERROR` | 400 | Request validation failed |
-| `RATE_LIMIT_EXCEEDED` | 429 | Rate limit exceeded |
-| `INTERNAL_ERROR` | 500 | Internal server error |
-| `CONFIGURATION_ERROR` | 500 | Server configuration error |
-| `UNKNOWN_ERROR` | 500 | Unexpected error |
+| Code | HTTP Status | Description | Troubleshooting | Retry Recommended |
+|------|-------------|-------------|-----------------|-------------------|
+| `VALIDATION_ERROR` | 400 | Request validation failed | Check request format, required fields, and data types. See error message for specific field issues. | No - fix request first |
+| `RATE_LIMIT_EXCEEDED` | 429 | Rate limit exceeded | Wait for rate limit window to reset. Check `Retry-After` header for wait time. | Yes - after waiting |
+| `INTERNAL_ERROR` | 500 | Internal server error | Server-side issue. Check worker logs. If persistent, contact support. | Yes - with exponential backoff |
+| `CONFIGURATION_ERROR` | 500 | Server configuration error | Worker misconfigured. Check environment variables and KV bindings. | No - requires admin fix |
+| `UNKNOWN_ERROR` | 500 | Unexpected error | Unexpected server error. Check logs for details. | Yes - with exponential backoff |
+
+### Error Response Format
+
+All error responses follow this structure:
+
+```json
+{
+  "error": "Human-readable error message",
+  "code": "ERROR_CODE",
+  "field": "field-name",
+  "suggestion": "Optional suggestion for fixing the error",
+  "details": {
+    "additional": "context"
+  }
+}
+```
+
+### Common Validation Errors
+
+**Invalid Event Format:**
+```json
+{
+  "error": "Invalid event: id: Must be 64-character hex string",
+  "code": "VALIDATION_ERROR",
+  "field": "event.id"
+}
+```
+**Solution**: Ensure event `id` is exactly 64 hexadecimal characters.
+
+**Invalid Relay URL:**
+```json
+{
+  "error": "Invalid relay URL: Must use wss://, ws://, https://, or http:// scheme",
+  "code": "VALIDATION_ERROR",
+  "field": "relays"
+}
+```
+**Solution**: Use `wss://` scheme for relay URLs.
+
+**Missing Required Field:**
+```json
+{
+  "error": "Invalid publish request: event is required",
+  "code": "VALIDATION_ERROR",
+  "field": "body"
+}
+```
+**Solution**: Include all required fields in request body.
+
+### Rate Limiting
+
+When rate limit is exceeded, the response includes a `Retry-After` header:
+
+```json
+{
+  "error": "Rate limit exceeded",
+  "code": "RATE_LIMIT_EXCEEDED",
+  "retryAfter": 60
+}
+```
+
+**Headers:**
+- `Retry-After: 60` - Seconds until rate limit resets
+
+**Handling**: Wait for the specified time before retrying, or implement exponential backoff.
 
 ## Policies
 
-### Default Policy
-- Concurrency: 8
-- Per-relay timeout: 10s
-- Connection timeout: 5s
-- Overall timeout: 15s
-- Retries: 1 attempt
-- Backoff: 1000ms
+Policies control retry behavior, timeouts, and concurrency for publishing operations. Select a policy via the `policy` query parameter.
 
-### Conservative Policy
-- Concurrency: 4
-- Per-relay timeout: 20s
-- Connection timeout: 10s
-- Overall timeout: 30s
-- Retries: 2 attempts
-- Backoff: 2000ms
+### Policy Comparison
 
-### Aggressive Policy
-- Concurrency: 12
-- Per-relay timeout: 5s
-- Connection timeout: 2s
-- Overall timeout: 10s
-- Retries: 0 attempts
-- Backoff: 500ms
+| Setting | Default | Conservative | Aggressive |
+|---------|---------|--------------|-----------|
+| **Concurrency** | 8 | 4 | 12 |
+| **Per-relay timeout** | 10s | 20s | 5s |
+| **Connection timeout** | 5s | 10s | 2s |
+| **Overall timeout** | 15s | 30s | 10s |
+| **Retry attempts** | 1 | 2 | 0 |
+| **Backoff delay** | 1000ms | 2000ms | 500ms |
+| **Min success relays** | 1 | 2 | 1 |
+
+### When to Use Each Policy
+
+**Default Policy** (Recommended for most use cases)
+- Balanced approach between speed and reliability
+- Good for general-purpose event publishing
+- Use when: You need reliable delivery but don't want to wait too long
+
+**Conservative Policy** (Maximum reliability)
+- More retries and longer timeouts
+- Requires at least 2 successful relays
+- Use when:
+  - Publishing critical events (financial transactions, important announcements)
+  - Relays are known to be unreliable
+  - You prioritize delivery over speed
+
+**Aggressive Policy** (Maximum speed)
+- No retries, fast timeouts
+- Higher concurrency for throughput
+- Use when:
+  - Publishing high-volume, non-critical events (social media posts, status updates)
+  - Relays are known to be reliable
+  - You prioritize speed over guaranteed delivery
+
+### Policy Details
+
+#### Default Policy
+- **Concurrency**: 8 concurrent publishes
+- **Per-relay timeout**: 10 seconds
+- **Connection timeout**: 5 seconds
+- **Overall timeout**: 15 seconds
+- **Retries**: 1 attempt
+- **Backoff**: 1000ms exponential backoff
+- **Min success relays**: 1
+
+#### Conservative Policy
+- **Concurrency**: 4 concurrent publishes
+- **Per-relay timeout**: 20 seconds
+- **Connection timeout**: 10 seconds
+- **Overall timeout**: 30 seconds
+- **Retries**: 2 attempts
+- **Backoff**: 2000ms exponential backoff
+- **Min success relays**: 2
+
+#### Aggressive Policy
+- **Concurrency**: 12 concurrent publishes
+- **Per-relay timeout**: 5 seconds
+- **Connection timeout**: 2 seconds
+- **Overall timeout**: 10 seconds
+- **Retries**: 0 attempts (no retries)
+- **Backoff**: 500ms (not used, no retries)
+- **Min success relays**: 1
 
 ## Rate Limiting
 
@@ -346,42 +489,199 @@ If `CORS_ENABLED=true` and `CORS_ORIGINS` is configured:
 
 ### Publish Event
 
+**Basic Request:**
 ```bash
 curl -X POST https://your-worker.workers.dev/publish \
   -H "Content-Type: application/json" \
-  -H "API-TOKEN: your-token" \
+  -H "API-TOKEN: your-secret-token" \
+  -H "X-Request-ID: req-12345" \
   -d '{
-    "relays": ["wss://relay.damus.io"],
+    "relays": ["wss://relay.damus.io", "wss://relay.snort.social"],
     "event": {
-      "id": "a".repeat(64),
-      "pubkey": "b".repeat(64),
+      "id": "a1b2c3d4e5f6789012345678901234567890123456789012345678901234567890",
+      "pubkey": "b2c3d4e5f6789012345678901234567890123456789012345678901234567890ab",
       "kind": 1,
-      "created_at": 1234567890,
-      "content": "Hello Nostr!",
+      "created_at": 1704067200,
+      "content": "Hello Nostr! This is my first post.",
       "tags": [],
-      "sig": "c".repeat(128)
-    }
+      "sig": "c3d4e5f6789012345678901234567890123456789012345678901234567890abcdef123456789012345678901234567890123456789012345678901234567890"
+    },
+    "correlationId": "my-correlation-id-123"
   }'
+```
+
+**Success Response:**
+```json
+{
+  "results": [
+    {
+      "relay": "wss://relay.damus.io",
+      "ok": true,
+      "latencyMs": 145
+    },
+    {
+      "relay": "wss://relay.snort.social",
+      "ok": true,
+      "latencyMs": 203
+    }
+  ]
+}
+```
+
+**Partial Success Response:**
+```json
+{
+  "results": [
+    {
+      "relay": "wss://relay.damus.io",
+      "ok": true,
+      "latencyMs": 145
+    },
+    {
+      "relay": "wss://relay.snort.social",
+      "ok": false,
+      "latencyMs": 10000,
+      "error": "TIMEOUT"
+    }
+  ]
+}
 ```
 
 ### Batch Publish
 
+**Request:**
 ```bash
-curl -X POST https://your-worker.workers.dev/batch?policy=conservative \
+curl -X POST "https://your-worker.workers.dev/batch?policy=conservative" \
   -H "Content-Type: application/json" \
+  -H "API-TOKEN: your-secret-token" \
   -d '{
-    "events": [/* array of events */],
-    "relays": ["wss://relay.damus.io"]
+    "events": [
+      {
+        "id": "event-id-1-hex-64-chars",
+        "pubkey": "pubkey-hex-64-chars",
+        "kind": 1,
+        "created_at": 1704067200,
+        "content": "Event 1 content",
+        "tags": [],
+        "sig": "signature-hex-128-chars"
+      },
+      {
+        "id": "event-id-2-hex-64-chars",
+        "pubkey": "pubkey-hex-64-chars",
+        "kind": 1,
+        "created_at": 1704067201,
+        "content": "Event 2 content",
+        "tags": [],
+        "sig": "signature-hex-128-chars"
+      }
+    ],
+    "relays": ["wss://relay.damus.io", "wss://relay.snort.social"]
   }'
+```
+
+**Response:**
+```json
+{
+  "results": [
+    {
+      "eventId": "event-id-1-hex-64-chars",
+      "outcome": {
+        "status": "success",
+        "relays": [
+          {
+            "relay": "wss://relay.damus.io",
+            "status": "success",
+            "latencyMs": 150
+          },
+          {
+            "relay": "wss://relay.snort.social",
+            "status": "success",
+            "latencyMs": 180
+          }
+        ]
+      }
+    },
+    {
+      "eventId": "event-id-2-hex-64-chars",
+      "outcome": {
+        "status": "partial",
+        "relays": [
+          {
+            "relay": "wss://relay.damus.io",
+            "status": "success",
+            "latencyMs": 155
+          },
+          {
+            "relay": "wss://relay.snort.social",
+            "status": "failure",
+            "reason": "timeout",
+            "latencyMs": 20000,
+            "error": "TIMEOUT"
+          }
+        ]
+      }
+    }
+  ],
+  "totalEvents": 2,
+  "successfulEvents": 1,
+  "failedEvents": 0
+}
 ```
 
 ### Fetch Profile
 
+**Request:**
 ```bash
 curl -X POST https://your-worker.workers.dev/profile \
   -H "Content-Type: application/json" \
+  -H "API-TOKEN: your-secret-token" \
   -d '{
-    "relays": ["wss://relay.damus.io"],
-    "pubkey": "npub1..."
+    "relays": ["wss://relay.damus.io", "wss://relay.snort.social"],
+    "pubkey": "npub1abc123def456..."
   }'
+```
+
+**Cached Response (200 OK):**
+```json
+{
+  "id": "profile-event-id-hex-64-chars",
+  "pubkey": "pubkey-hex-64-chars",
+  "kind": 0,
+  "created_at": 1704067200,
+  "content": "{\"name\":\"Alice\",\"about\":\"Developer\",\"picture\":\"https://example.com/avatar.jpg\"}",
+  "tags": [],
+  "sig": "signature-hex-128-chars"
+}
+```
+
+**Not Cached Response (202 Accepted):**
+Empty body. Profile is being fetched asynchronously.
+
+### Health Check
+
+**Request:**
+```bash
+curl https://your-worker.workers.dev/health
+```
+
+**Response:**
+```json
+{
+  "status": "ok",
+  "timestamp": "2024-01-01T12:00:00.000Z",
+  "relays": [
+    {
+      "relay": "wss://relay.damus.io",
+      "healthy": true,
+      "lastChecked": 1704067200000,
+      "consecutiveFailures": 0
+    },
+    {
+      "relay": "wss://relay.snort.social",
+      "healthy": false,
+      "lastChecked": 1704067100000,
+      "consecutiveFailures": 3
+    }
+  ]
+}
 ```

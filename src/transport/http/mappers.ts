@@ -17,7 +17,6 @@ export interface PublishRequest {
   relays: string[];
   event: Event;
   correlationId?: string;
-  returnPerRelayResults?: boolean;
 }
 
 export interface RelayPublishResult {

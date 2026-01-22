@@ -1,18 +1,124 @@
-# HTTP to Nostr Cloudflare worker (Vibe version)
+# HTTP to Nostr Cloudflare Worker
 
-This [Cloudflare worker](https://workers.cloudflare.com/) exposes a HTTP interface to publish events to specified Nostr relays.
-The HTTP request is non-blocking and will immediatelly return. The events will be published asynchronously.
+A production-ready [Cloudflare Worker](https://workers.cloudflare.com/) that provides an HTTP interface for publishing Nostr events to multiple relays concurrently. No WebSocket integration required—just simple HTTP requests.
 
-The goal of this worker is to make it easier to integrate publishing events into any application.
-Using this worker applications do not need to integrate websockets and can publish events through a non-blocking HTTP request.
+> 📖 **Documentation**: For complete API reference, see [API.md](docs/API.md). For architecture details, see [ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
-## API
+## Table of Contents
 
-### POST /publish
+- [Features](#features)
+- [Quick Start](#quick-start)
+- [API Overview](#api-overview)
+- [Configuration](#configuration)
+- [Deployment](#deployment)
+- [Architecture](#architecture)
+- [Development](#development)
+- [Troubleshooting](#troubleshooting)
+- [FAQ](#faq)
+- [Best Practices](#best-practices)
 
-Send a JSON body with the event and the relays that the event should be published to.
+## Features
 
-**Request Body:**
+- **Simple HTTP API**: Publish Nostr events via REST endpoints—no WebSocket complexity
+- **Concurrent Publishing**: Publish to multiple relays simultaneously with configurable concurrency
+- **Reliability**: Built-in retry logic, circuit breakers, and health checks
+- **Flexible Policies**: Choose between default, conservative, or aggressive publishing strategies
+- **Profile Caching**: Efficient profile fetching with Cloudflare KV caching
+- **Rate Limiting**: Built-in rate limiting per IP or API token
+- **Observability**: Comprehensive logging, metrics, and tracing support
+- **Production Ready**: Battle-tested with timeout handling, error recovery, and monitoring
+
+## Quick Start
+
+### Prerequisites
+
+- Node.js 20+ and pnpm
+- Cloudflare account with Workers enabled
+- Wrangler CLI installed (`npm install -g wrangler`)
+
+### Installation
+
+```bash
+# Clone the repository
+git clone <repository-url>
+cd vibe-http-nostr-publisher
+
+# Install dependencies
+pnpm install
+
+# Set up Cloudflare KV namespace
+wrangler kv:namespace create PROFILES
+wrangler kv:namespace create PROFILES --preview
+```
+
+Add the KV namespace bindings to `wrangler.toml`:
+
+```toml
+[[kv_namespaces]]
+binding = "PROFILES"
+id = "<your-namespace-id>"
+preview_id = "<your-preview-namespace-id>"
+```
+
+### Basic Configuration
+
+Create a `.dev.vars` file for local development:
+
+```bash
+# Optional: Protect your worker
+API_TOKEN=your-secret-token
+
+# Optional: Enable CORS for browser clients
+CORS_ENABLED=true
+CORS_ORIGINS=https://example.com
+
+# Optional: Configure rate limiting
+RATE_LIMIT_REQUESTS=100
+RATE_LIMIT_WINDOW_MS=60000
+```
+
+### First Request
+
+```bash
+curl -X POST https://your-worker.workers.dev/publish \
+  -H "Content-Type: application/json" \
+  -H "API-TOKEN: your-secret-token" \
+  -d '{
+    "relays": ["wss://relay.damus.io"],
+    "event": {
+      "id": "64-character-hex-event-id",
+      "pubkey": "64-character-hex-pubkey",
+      "kind": 1,
+      "created_at": 1234567890,
+      "content": "Hello Nostr!",
+      "tags": [],
+      "sig": "128-character-hex-signature"
+    }
+  }'
+```
+
+For detailed API documentation, see [API.md](docs/API.md). For architecture and design details, see [ARCHITECTURE.md](docs/ARCHITECTURE.md).
+
+## API Overview
+
+The service provides four main endpoints:
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/publish` | POST | Publish a single event to multiple relays |
+| `/batch` | POST | Publish multiple events in a single request |
+| `/profile` | POST | Fetch a Nostr profile (kind 0 event) |
+| `/health` | GET | Check health status of known relays |
+
+For complete API documentation with request/response examples, error codes, and detailed field descriptions, see [API.md](docs/API.md).
+
+### Quick Reference
+
+#### POST /publish
+
+Publishes a single signed Nostr event to multiple relays concurrently.
+
+**Request:**
 ```json
 {
   "relays": ["wss://relay.damus.io", "wss://relay.snort.social"],
@@ -23,8 +129,7 @@ Send a JSON body with the event and the relays that the event should be publishe
     "sig": "signature",
     ...
   },
-  "correlationId": "optional-correlation-id",
-  "returnPerRelayResults": true
+  "correlationId": "optional-correlation-id"
 }
 ```
 
@@ -32,11 +137,8 @@ Send a JSON body with the event and the relays that the event should be publishe
 - `relays` (required): Array of relay URLs. Must use `wss://` scheme. URLs are normalized (trimmed, deduplicated, max 12 relays).
 - `event` (required): Signed Nostr event JSON with required fields: `id`, `pubkey`, `kind`, `sig`.
 - `correlationId` (optional): Correlation ID for tracking.
-- `returnPerRelayResults` (optional): Default `true`. If `true`, returns per-relay results.
 
-**Response:**
-
-The endpoint returns synchronously with per-relay publish results. Returns HTTP 200 with JSON body:
+**Response (200 OK):**
 
 ```json
 {
@@ -74,22 +176,25 @@ Invalid request returns HTTP 400 with JSON:
 ```
 
 **Query Parameters:**
-- `?policy=conservative` - Use conservative policy (fewer retries, longer timeouts)
-- `?policy=aggressive` - Use aggressive policy (more retries, shorter timeouts)
-- `?policy=default` or omitted - Use default policy (balanced)
+- `?policy=conservative` - Use conservative policy (more retries: 2, longer timeouts: 20s per-relay, 30s overall)
+- `?policy=aggressive` - Use aggressive policy (no retries: 0, shorter timeouts: 5s per-relay, 10s overall)
+- `?policy=default` or omitted - Use default policy (balanced: 1 retry, 10s per-relay, 15s overall)
 
 **Notes:**
 - Relay URLs are normalized: `wss://` scheme enforced, whitespace trimmed, trailing slashes removed, deduplicated, capped at 12 relays.
-- Per-relay timeout: ~3000ms
-- Overall request timeout: 5000ms hard cap (Cloudflare Workers have a 30s absolute limit)
-- Concurrency limit: 8 concurrent publishes
+- Timeout values vary by policy (see [Policy Comparison](docs/API.md#policies) section):
+  - **Default policy**: Per-relay timeout: 10s, Overall timeout: 15s
+  - **Conservative policy**: Per-relay timeout: 20s, Overall timeout: 30s
+  - **Aggressive policy**: Per-relay timeout: 5s, Overall timeout: 10s
+- Cloudflare Workers have a hard 30-second absolute limit (system warns at 25s)
+- Concurrency limit: 8 concurrent publishes (default policy)
 - Request size limit: 1MB
 - Results are returned even if some relays fail (as long as request is valid).
 - Response includes `X-Request-ID` header with correlation ID for tracing
 
-### POST /batch
+#### POST /batch
 
-Publish multiple events to multiple relays in a single request.
+Publish multiple events to multiple relays in a single request. Supports up to 200 events per batch.
 
 **Request Body:**
 ```json
@@ -154,9 +259,9 @@ Returns HTTP 200 with JSON body:
 - All events are published concurrently with concurrency limits applied
 - Each event's outcome is tracked independently
 
-### POST /profile
+#### POST /profile
 
-Retrieve the profile for a pubkey.
+Retrieve a Nostr profile (kind 0 event) for a given pubkey. Returns cached profile immediately (200) or triggers async fetch (202).
 
 ```json
 {
@@ -169,61 +274,154 @@ If a profile is already cached it will return with `HTTP status 200`.
 
 If a profile is NOT already cached it will return with `HTTP status 202` and query the profile asynchronously.
 
+#### GET /health
+
+Returns health status of all known relays. Useful for monitoring and debugging relay connectivity.
+
+**Request:**
+No body required. GET request to `/health` endpoint.
+
+**Response:**
+
+Returns HTTP 200 with JSON body:
+
+```json
+{
+  "status": "ok",
+  "timestamp": "2024-01-01T00:00:00.000Z",
+  "relays": [
+    {
+      "relay": "wss://relay.damus.io",
+      "healthy": true,
+      "lastChecked": 1234567890,
+      "consecutiveFailures": 0
+    }
+  ]
+}
+```
+
+**Response Fields:**
+- `status`: Always `"ok"` for successful health check
+- `timestamp`: ISO 8601 timestamp of the health check
+- `relays`: Array of relay health statuses
+  - `relay`: The relay URL
+  - `healthy`: Boolean indicating if relay is currently healthy
+  - `lastChecked`: Unix timestamp of last health check
+  - `consecutiveFailures`: Number of consecutive failures
+
 ## Configuration
 
-#### Cloudflare KV
+### Environment Variables
 
-The profile data is cached in a [worker KV](https://developers.cloudflare.com/workers/runtime-apis/kv/) (a global, low-latency, key-value data store).
+All configuration is done through environment variables. Set these in your `wrangler.toml` for production or `.dev.vars` for local development.
 
-Configure the KV:
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `PROFILES` | Yes | - | Cloudflare KV namespace binding for profile caching |
+| `API_TOKEN` | No | - | Secret token for authentication (if set, all requests require `API-TOKEN` header) |
+| `CORS_ENABLED` | No | `false` | Enable CORS support (`"true"` to enable) |
+| `CORS_ORIGINS` | No | - | Comma-separated list of allowed origins (required if `CORS_ENABLED=true`) |
+| `RATE_LIMIT_REQUESTS` | No | `100` | Maximum requests per rate limit window |
+| `RATE_LIMIT_WINDOW_MS` | No | `60000` | Rate limit window size in milliseconds (default: 1 minute) |
+| `METRICS_EXPORT_ENABLED` | No | `false` | Enable metrics export (`"true"` to enable) |
+| `METRICS_EXPORT_INTERVAL_MS` | No | `60000` | Metrics export interval in milliseconds |
 
-```
-$ wrangler kv:namespace create PROFILES
-$ wrangler kv:namespace create PROFILES --preview
-```
+### Cloudflare KV Setup
 
-and add the `kv_namespaces` array to the wrangler.toml
+The profile data is cached in [Cloudflare KV](https://developers.cloudflare.com/workers/runtime-apis/kv/), a global, low-latency key-value data store.
 
-#### API Token
+**Setup Steps:**
 
-To protect your worker you can set a `API_TOKEN` environment variable.
-
-Clients then need to send this token in a `API-TOKEN` HTTP header.
-
-#### CORS
-
-To enable CORS support for browser-based clients:
-
-```
-CORS_ENABLED=true
-CORS_ORIGINS=https://example.com,https://app.example.com
-```
-
-#### Rate Limiting
-
-Configure rate limiting per IP/API token:
-
-```
-RATE_LIMIT_REQUESTS=100        # Max requests per window (default: 100)
-RATE_LIMIT_WINDOW_MS=60000     # Window size in milliseconds (default: 60000 = 1 minute)
+1. Create KV namespaces:
+```bash
+wrangler kv:namespace create PROFILES
+wrangler kv:namespace create PROFILES --preview
 ```
 
-#### Metrics Export
-
-Enable metrics export to Cloudflare Analytics:
-
+2. Add bindings to `wrangler.toml`:
+```toml
+[[kv_namespaces]]
+binding = "PROFILES"
+id = "<production-namespace-id>"
+preview_id = "<preview-namespace-id>"
 ```
-METRICS_EXPORT_ENABLED=true
-METRICS_EXPORT_INTERVAL_MS=60000  # Export interval in milliseconds (default: 60000)
+
+### Configuration Examples
+
+**Minimal Configuration (Public Worker):**
+```toml
+# wrangler.toml
+[[kv_namespaces]]
+binding = "PROFILES"
+id = "your-namespace-id"
+```
+
+**Production Configuration (Protected):**
+```toml
+# wrangler.toml
+[[kv_namespaces]]
+binding = "PROFILES"
+id = "your-namespace-id"
+
+[env.production.vars]
+API_TOKEN = "your-secret-token"
+CORS_ENABLED = "true"
+CORS_ORIGINS = "https://yourdomain.com"
+RATE_LIMIT_REQUESTS = "200"
+RATE_LIMIT_WINDOW_MS = "60000"
+```
+
+**Browser Client Configuration:**
+```toml
+[env.production.vars]
+CORS_ENABLED = "true"
+CORS_ORIGINS = "https://app.example.com,https://www.example.com"
 ```
 
 ## Deployment
 
-Refer to the [Cloudflare docs](https://developers.cloudflare.com/workers/get-started/guide/) Learn more about Cloudflare workers and how to publish workers
+### Step-by-Step Deployment
 
-```
-$ wrangler publish
-```
+1. **Configure Environment Variables**
+   - Set up KV namespace (see [Configuration](#configuration))
+   - Add environment variables to `wrangler.toml` or Cloudflare dashboard
+
+2. **Deploy to Cloudflare**
+   ```bash
+   wrangler deploy
+   ```
+
+3. **Verify Deployment**
+   ```bash
+   # Test health endpoint
+   curl https://your-worker.workers.dev/health
+   
+   # Test publish endpoint (if API_TOKEN is set)
+   curl -X POST https://your-worker.workers.dev/publish \
+     -H "Content-Type: application/json" \
+     -H "API-TOKEN: your-token" \
+     -d '{"relays": ["wss://relay.damus.io"], "event": {...}}'
+   ```
+
+### Deployment Checklist
+
+- [ ] KV namespace created and bound
+- [ ] Environment variables configured
+- [ ] API_TOKEN set (if protecting worker)
+- [ ] CORS configured (if serving browser clients)
+- [ ] Rate limiting configured (if needed)
+- [ ] Worker deployed successfully
+- [ ] Health endpoint responding
+- [ ] Test publish request succeeds
+
+### Post-Deployment
+
+- Monitor worker logs in Cloudflare dashboard
+- Check metrics and analytics
+- Set up alerts for error rates
+- Monitor KV usage for profile caching
+
+For more details, see the [Cloudflare Workers documentation](https://developers.cloudflare.com/workers/get-started/guide/).
 
 ## Architecture
 
@@ -279,13 +477,245 @@ The worker implements a layered architecture:
 ### Timeout Handling
 
 Cloudflare Workers have a hard 30-second timeout limit. The system:
-- Configures overall timeouts well below 30s (default: 5s)
+- Configures overall timeouts well below 30s (default: 15s, varies by policy)
 - Warns when operations approach 25s threshold
 - Uses per-relay timeouts to prevent individual relays from blocking
 - Implements abort signals for cancellation
 
+## Examples
+
+### JavaScript/TypeScript
+
+```javascript
+async function publishEvent(event, relays) {
+  const response = await fetch('https://your-worker.workers.dev/publish', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'API-TOKEN': 'your-token',
+    },
+    body: JSON.stringify({
+      relays,
+      event,
+    }),
+  });
+  
+  const result = await response.json();
+  console.log('Publish results:', result);
+  return result;
+}
+```
+
+### Python
+
+```python
+import requests
+
+def publish_event(event, relays):
+    response = requests.post(
+        'https://your-worker.workers.dev/publish',
+        headers={
+            'Content-Type': 'application/json',
+            'API-TOKEN': 'your-token',
+        },
+        json={
+            'relays': relays,
+            'event': event,
+        }
+    )
+    return response.json()
+```
+
+### Using Different Policies
+
+```bash
+# Conservative policy (more retries, longer timeouts)
+curl -X POST "https://your-worker.workers.dev/publish?policy=conservative" \
+  -H "Content-Type: application/json" \
+  -d '{...}'
+
+# Aggressive policy (no retries, faster timeouts)
+curl -X POST "https://your-worker.workers.dev/publish?policy=aggressive" \
+  -H "Content-Type: application/json" \
+  -d '{...}'
+```
+
+### Batch Publishing
+
+```javascript
+const events = [event1, event2, event3];
+const relays = ['wss://relay.damus.io', 'wss://relay.snort.social'];
+
+const response = await fetch('https://your-worker.workers.dev/batch', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ events, relays }),
+});
+
+const batchResult = await response.json();
+console.log(`Published ${batchResult.successfulEvents} of ${batchResult.totalEvents} events`);
+```
+
+## Troubleshooting
+
+### Common Issues
+
+**401 Unauthorized / 403 Forbidden**
+- **Cause**: Missing or invalid `API-TOKEN` header
+- **Solution**: Ensure `API_TOKEN` is set in environment and included in request headers
+
+**400 Bad Request - Validation Error**
+- **Cause**: Invalid request format, missing required fields, or invalid event structure
+- **Solution**: Check request body matches API schema. Verify event has all required fields (`id`, `pubkey`, `kind`, `sig`, `created_at`, `content`, `tags`)
+
+**429 Too Many Requests**
+- **Cause**: Rate limit exceeded
+- **Solution**: Wait for rate limit window to reset (check `Retry-After` header) or increase `RATE_LIMIT_REQUESTS`
+
+**Timeout Errors**
+- **Cause**: Relays not responding within timeout period
+- **Solution**: 
+  - Use conservative policy for unreliable relays
+  - Check relay health with `/health` endpoint
+  - Reduce number of relays or increase timeout
+
+**Profile Not Found (202 Response)**
+- **Cause**: Profile not in cache and async fetch triggered
+- **Solution**: This is expected behavior. Wait a moment and retry the request to get cached profile
+
+### Debugging Tips
+
+1. **Check Health Status**
+   ```bash
+   curl https://your-worker.workers.dev/health
+   ```
+
+2. **Enable Detailed Logging**
+   - Check Cloudflare Workers logs in dashboard
+   - Look for correlation IDs in `X-Request-ID` header
+
+3. **Test with Single Relay**
+   - Start with one reliable relay to isolate issues
+   - Gradually add more relays
+
+4. **Verify Event Format**
+   - Ensure event is properly signed
+   - Check all required fields are present
+   - Validate hex string formats (64 chars for id/pubkey, 128 for sig)
+
+## FAQ
+
+**Q: Why use this worker instead of direct WebSocket connections?**
+A: This worker simplifies integration by providing a standard HTTP API, handles retries and error recovery automatically, and supports concurrent publishing to multiple relays without managing WebSocket connections.
+
+**Q: What's the difference between the policies?**
+A: 
+- **Default**: Balanced approach (1 retry, 10s per-relay timeout)
+- **Conservative**: Maximum reliability (2 retries, 20s per-relay timeout) - use for critical events
+- **Aggressive**: Maximum speed (0 retries, 5s per-relay timeout) - use for high-volume, non-critical events
+
+**Q: How many relays can I publish to?**
+A: Maximum 12 relays per request (after normalization and deduplication).
+
+**Q: What happens if some relays fail?**
+A: The endpoint returns results for all relays. Check the `ok` field in each result to see which succeeded. The overall request succeeds if at least one relay accepts the event (policy-dependent).
+
+**Q: How long are profiles cached?**
+A: Profiles are cached for 7 days in Cloudflare KV. Stale profiles (older than 3 hours) trigger background refresh.
+
+**Q: Can I use this from a browser?**
+A: Yes, if CORS is enabled. Set `CORS_ENABLED=true` and configure `CORS_ORIGINS` with your domain.
+
+**Q: What are the rate limits?**
+A: Default is 100 requests per 60 seconds per IP/API token. Configure via `RATE_LIMIT_REQUESTS` and `RATE_LIMIT_WINDOW_MS`.
+
+## Best Practices
+
+### Endpoint Selection
+
+- **Use `/publish`** for single events or when you need immediate feedback
+- **Use `/batch`** for multiple events to reduce HTTP overhead
+- **Use `/profile`** for fetching user profiles (leverages caching)
+- **Use `/health`** for monitoring and debugging
+
+### Policy Selection
+
+- **Default policy**: Good for most use cases
+- **Conservative policy**: Use for critical events that must be published (e.g., financial transactions)
+- **Aggressive policy**: Use for high-volume, non-critical events (e.g., social media posts)
+
+### Error Handling
+
+```javascript
+try {
+  const result = await publishEvent(event, relays);
+  
+  // Check per-relay results
+  const failed = result.results.filter(r => !r.ok);
+  if (failed.length > 0) {
+    console.warn('Some relays failed:', failed);
+  }
+  
+  // Determine if overall publish succeeded
+  const successCount = result.results.filter(r => r.ok).length;
+  if (successCount === 0) {
+    throw new Error('All relays failed');
+  }
+} catch (error) {
+  if (error.response?.status === 429) {
+    // Handle rate limiting
+    const retryAfter = error.response.headers['retry-after'];
+    await sleep(parseInt(retryAfter) * 1000);
+    // Retry request
+  }
+}
+```
+
+### Performance Optimization
+
+1. **Batch Multiple Events**: Use `/batch` endpoint instead of multiple `/publish` calls
+2. **Choose Appropriate Policy**: Use aggressive policy for high-volume, non-critical events
+3. **Limit Relay Count**: More relays = longer response time. Use 3-5 reliable relays
+4. **Monitor Health**: Regularly check `/health` to identify problematic relays
+
+### Security
+
+1. **Always Set API_TOKEN**: Protect your worker from unauthorized access
+2. **Validate Events Client-Side**: Don't rely solely on server validation
+3. **Use HTTPS**: Always use `wss://` for relay URLs
+4. **Monitor Rate Limits**: Set appropriate limits to prevent abuse
+
 ## Development
 
+### Local Development
+
+```bash
+# Start local development server
+wrangler dev
+
+# Run tests
+pnpm test
+
+# Run specific test suites
+pnpm test:unit
+pnpm test:integration
+pnpm test:chaos
+
+# Type checking
+pnpm typecheck
+
+# Linting
+pnpm lint
 ```
-$ wrangler dev
-```
+
+### Project Structure
+
+- `src/transport/http/` - HTTP handlers and mappers
+- `src/core/` - Business logic (publishing, profiles, relays)
+- `src/adapters/nostr/` - Nostr protocol adapters
+- `src/policies/` - Publishing policies
+- `src/middleware/` - Rate limiting, CORS
+- `src/observability/` - Logging, metrics, tracing
+- `tests/` - Test suites
+
+For detailed architecture documentation, see [ARCHITECTURE.md](docs/ARCHITECTURE.md).

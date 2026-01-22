@@ -86,7 +86,6 @@ export const PublishRequestSchema = v.object({
   relays: v.array(RelayUrlSchema, 'relays must be an array of valid relay URLs'),
   event: EventSchema,
   correlationId: v.optional(v.string()),
-  returnPerRelayResults: v.optional(v.boolean()),
 });
 
 /**
