@@ -165,13 +165,23 @@ const publishToRelay = async (
     setupRelayHandlers(relay, relayUrl, event, eventId, connected, connectionTimeoutId, finish);
 
     // Handle connect() promise rejection
-    console.info(`[${relayUrl}] Calling relay.connect()`);
-    // We can't use await here since we're in a Promise constructor
-    // eslint-disable-next-line promise/prefer-await-to-then, promise/prefer-await-to-callbacks
-    relay.connect().catch((error: unknown) => {
-      console.error(`[${relayUrl}] relay.connect() rejected:`, error);
-      finish(false, `CONNECTION_ERROR: ${error instanceof Error ? error.message : String(error)}`);
-    });
+    console.info(`[${relayUrl}] About to call relay.connect()`);
+    try {
+      console.info(`[${relayUrl}] Calling relay.connect()`);
+      const connectPromise = relay.connect();
+      console.info(`[${relayUrl}] relay.connect() returned, type: ${typeof connectPromise}`);
+      
+      // We can't use await here since we're in a Promise constructor
+      // eslint-disable-next-line promise/prefer-await-to-then, promise/prefer-await-to-callbacks
+      connectPromise.catch((error: unknown) => {
+        console.error(`[${relayUrl}] relay.connect() rejected:`, error);
+        finish(false, `CONNECTION_ERROR: ${error instanceof Error ? error.message : String(error)}`);
+      });
+    } catch (error) {
+      // Catch synchronous errors
+      console.error(`[${relayUrl}] Synchronous error calling relay.connect():`, error);
+      finish(false, `CONNECTION_ERROR_SYNC: ${error instanceof Error ? error.message : String(error)}`);
+    }
   });
 };
 
@@ -187,9 +197,15 @@ const limitConcurrency = async <T>(
   const results: RelayPublishResult[] = [];
   const executing: Array<Promise<void>> = [];
 
-  for (const item of items) {
+  console.info(`limitConcurrency: processing ${items.length} items with limit ${limit}`);
+  
+  for (let i = 0; i < items.length; i++) {
+    const item = items[i];
+    console.info(`limitConcurrency: processing item ${i + 1}/${items.length}, executing: ${executing.length}`);
+    
     // Wait if we're at the limit
     if (executing.length >= limit) {
+      console.info(`limitConcurrency: at limit, waiting for one to complete`);
       await Promise.race(executing);
       // Note: We don't remove completed promises from the array.
       // Promise.race works correctly even with already-resolved promises,
@@ -197,12 +213,16 @@ const limitConcurrency = async <T>(
     }
 
     // Start the operation
+    console.info(`limitConcurrency: calling fn for item ${i + 1}`);
     const operationPromise = fn(item);
     const promise = (async () => {
       try {
+        console.info(`limitConcurrency: awaiting result for item ${i + 1}`);
         const result = await operationPromise;
+        console.info(`limitConcurrency: got result for item ${i + 1}:`, result);
         results.push(result);
-      } catch {
+      } catch (error) {
+        console.error(`limitConcurrency: error for item ${i + 1}:`, error);
         // Errors are handled in fn, but we need to catch here too
       }
     })();
@@ -211,7 +231,9 @@ const limitConcurrency = async <T>(
   }
 
   // Wait for all remaining operations
+  console.info(`limitConcurrency: waiting for all ${executing.length} operations to complete`);
   await Promise.all(executing);
+  console.info(`limitConcurrency: all operations completed, returning ${results.length} results`);
   return results;
 };
 
@@ -290,12 +312,19 @@ export const publishEvent = async (
 
   // Publish to all relays with concurrency limit
   const publishPromise = (async () => {
-    const publishResults = await limitConcurrency(relayUrls, MAX_CONCURRENT, (relayUrl) =>
-      publishToRelay(relayUrl, event, eventId)
-    );
-    results = publishResults;
-    for (const result of publishResults) {
-      completedRelays.add(result.relay);
+    console.info(`[${eventId}] Starting limitConcurrency with ${relayUrls.length} relays`);
+    try {
+      const publishResults = await limitConcurrency(relayUrls, MAX_CONCURRENT, (relayUrl) =>
+        publishToRelay(relayUrl, event, eventId)
+      );
+      console.info(`[${eventId}] limitConcurrency completed with ${publishResults.length} results`);
+      results = publishResults;
+      for (const result of publishResults) {
+        completedRelays.add(result.relay);
+      }
+    } catch (error) {
+      console.error(`[${eventId}] Error in limitConcurrency:`, error);
+      throw error;
     }
   })();
 
@@ -307,12 +336,15 @@ export const publishEvent = async (
   });
 
   // Race between publishing and overall timeout
+  console.info(`[${eventId}] Starting Promise.race with timeout ${OVERALL_TIMEOUT_MS}ms`);
   try {
-    await Promise.race([publishPromise, timeoutPromise]);
+    const raceResult = await Promise.race([publishPromise, timeoutPromise]);
+    console.info(`[${eventId}] Promise.race completed, result:`, raceResult);
   } catch (error) {
-    console.error('Error during publish promise:', error);
+    console.error(`[${eventId}] Error during publish promise:`, error);
     // Continue to return results even if there was an error
   }
+  console.info(`[${eventId}] After Promise.race, elapsed: ${Date.now() - startTime}ms, results count: ${results.length}`);
 
   // If overall timeout hit, mark remaining relays as TIMEOUT
   const elapsed = Date.now() - startTime;
