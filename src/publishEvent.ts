@@ -1,5 +1,5 @@
 import type { Request, ExecutionContext } from '@cloudflare/workers-types';
-import { relayInit } from 'nostr-tools';
+import { Relay } from 'nostr-tools';
 import type { Event } from 'nostr-tools';
 
 import type { Env, PublishRequest, RelayPublishResult, PublishResponse, ErrorResponse } from './types';
@@ -38,7 +38,7 @@ const publishToRelay = async (
   let resolved = false;
 
   return new Promise<RelayPublishResult>((resolve) => {
-    const relay = relayInit(relayUrl);
+    const relay = new Relay(relayUrl);
     let timeoutId: ReturnType<typeof setTimeout> | null = null;
 
     const cleanup = () => {

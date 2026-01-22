@@ -10,13 +10,6 @@ declare module 'nostr-tools' {
     sig: string;
   }
 
-  export interface Relay {
-    connect(): Promise<void>;
-    close(): void;
-    publish(_event: Event): PublishResult;
-    sub(_filters: Filter[]): Subscription;
-    on(_event: 'connect' | 'error', _handler: (..._args: unknown[]) => void): void;
-  }
 
   export interface PublishResult {
     on(_event: 'ok' | 'failed', _handler: (_reason?: string) => void): void;
@@ -35,5 +28,12 @@ declare module 'nostr-tools' {
     [key: string]: unknown;
   }
 
-  export function relayInit(_url: string): Relay;
+  export class Relay {
+    constructor(url: string);
+    connect(): Promise<void>;
+    close(): void;
+    publish(_event: Event): PublishResult;
+    sub(_filters: Filter[]): Subscription;
+    on(_event: 'connect' | 'error' | 'disconnect', _handler: (..._args: unknown[]) => void): void;
+  }
 }

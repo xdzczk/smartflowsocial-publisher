@@ -1,5 +1,5 @@
 import * as bech32 from 'bech32';
-import { relayInit } from 'nostr-tools';
+import { Relay } from 'nostr-tools';
 import type { Event } from 'nostr-tools';
 
 export const cleanURLs = (urls: unknown): string[] => {
@@ -101,7 +101,7 @@ const fetchProfileFromRelay = (pubkey: string, url: string): Promise<Event> => {
   return new Promise((resolve, reject) => {
     console.info(`Fetching ${pubkey}'s info from ${url}`);
 
-    const relay = relayInit(url);
+    const relay = new Relay(url);
     const timeout = 5000;
 
     function timeoutAndClose() {
