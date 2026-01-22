@@ -97,41 +97,55 @@ export const normalizeRelays = (relays: unknown): string[] => {
   return Array.from(normalized);
 };
 
-const fetchProfileFromRelay = (pubkey: string, url: string): Promise<Event> => {
-  return new Promise((resolve, reject) => {
-    console.info(`Fetching ${pubkey}'s info from ${url}`);
+const fetchProfileFromRelay = async (pubkey: string, url: string): Promise<Event> => {
+  console.info(`Fetching ${pubkey}'s info from ${url}`);
+  const relay = new Relay(url);
+  const timeout = 5000;
 
-    const relay = new Relay(url);
-    const timeout = 5000;
+  try {
+    // Connect with timeout
+    const connectPromise = relay.connect();
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      setTimeout(() => reject(new Error(`Timeout fetching profile from ${url}`)), timeout);
+    });
 
-    function timeoutAndClose() {
-      console.error(`Timeout error: pubkey ${pubkey} relay ${url}`);
-      relay.close();
-      reject(new Error(`Timeout fetching profile from ${url}`));
-    }
-    const timeoutCheck = setTimeout(timeoutAndClose, timeout);
+    await Promise.race([connectPromise, timeoutPromise]);
+    console.info(`connected to ${url}`);
 
-    relay.on('connect', () => {
-      console.info(`connected to ${url}`);
-      const subscription = relay.sub([{ limit: 1, kinds: [0], authors: [pubkey] }]);
-      subscription.on('event', (ev) => {
-        console.info(`Fetched ${pubkey}'s info from ${url}`);
-        clearTimeout(timeoutCheck);
-        subscription.unsub();
+    // Wait for event with timeout
+    return new Promise<Event>((resolve, reject) => {
+      let subscription: ReturnType<typeof relay.subscribe> | null = null;
+
+      const eventTimeout = setTimeout(() => {
+        if (subscription) {
+          subscription.close();
+        }
         relay.close();
-        resolve(ev);
+        reject(new Error(`Timeout waiting for profile event from ${url}`));
+      }, timeout);
+
+      // Subscribe to get the profile
+      subscription = relay.subscribe([{ limit: 1, kinds: [0], authors: [pubkey] }], {
+        onevent: (ev: Event) => {
+          console.info(`Fetched ${pubkey}'s info from ${url}`);
+          clearTimeout(eventTimeout);
+          if (subscription) {
+            subscription.close();
+          }
+          relay.close();
+          resolve(ev);
+        },
+        onclose: (reason: string) => {
+          clearTimeout(eventTimeout);
+          relay.close();
+          reject(new Error(`Subscription closed: ${reason}`));
+        },
       });
     });
-
-    relay.on('error', (msg) => {
-      console.error(`Failed to fetch from ${url}`, JSON.stringify(msg));
-      clearTimeout(timeoutCheck);
-      relay.close();
-      reject(new Error(`Failed to fetch from ${url}: ${JSON.stringify(msg)}`));
-    });
-
-    void relay.connect();
-  });
+  } catch (error) {
+    relay.close();
+    throw error;
+  }
 };
 
 export const fetchProfiles = (pubkey: string, urls: string[]): Promise<Event>[] => {

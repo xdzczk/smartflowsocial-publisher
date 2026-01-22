@@ -35,57 +35,8 @@ const validateEvent = (event: unknown): event is Event => {
 };
 
 /**
- * Sets up event handlers for a relay connection
- */
-const setupRelayHandlers = (
-  relay: Relay,
-  relayUrl: string,
-  event: Event,
-  eventId: string,
-  connected: { value: boolean },
-  connectionTimeoutId: { value: ReturnType<typeof setTimeout> | null },
-  // eslint-disable-next-line no-unused-vars
-  finish: (ok: boolean, error?: string) => void
-): void => {
-    relay.on('connect', () => {
-      console.info(`[${relayUrl}] 'connect' event fired`);
-      connected.value = true;
-      if (connectionTimeoutId.value) {
-        clearTimeout(connectionTimeoutId.value);
-        connectionTimeoutId.value = null;
-      }
-      console.info(`[${relayUrl}] Sending ${eventId} to relay`);
-      try {
-        const pub = relay.publish(event);
-        pub.on('ok', () => {
-          console.info(`[${relayUrl}] Event ${eventId} published successfully`);
-          finish(true);
-        });
-        pub.on('failed', (reason?: string) => {
-          console.warn(`[${relayUrl}] Failed to publish ${eventId}: ${reason}`);
-          finish(false, reason ?? 'RELAY_REJECTED');
-        });
-      } catch (error) {
-        console.error(`[${relayUrl}] Error calling relay.publish():`, error);
-        finish(false, `PUBLISH_ERROR: ${error instanceof Error ? error.message : String(error)}`);
-      }
-    });
-
-  relay.on('error', (msg: unknown) => {
-    console.error(`Failed to connect to ${relayUrl}`, JSON.stringify(msg));
-    finish(false, `CONNECTION_ERROR: ${JSON.stringify(msg)}`);
-  });
-
-  relay.on('disconnect', () => {
-    if (!connected.value) {
-      console.warn(`Disconnected from ${relayUrl} before connection established`);
-      finish(false, 'DISCONNECTED');
-    }
-  });
-};
-
-/**
  * Publishes an event to a single relay and returns the result
+ * Uses the new Relay class API which is promise-based, not event-based
  */
 const publishToRelay = async (
   relayUrl: string,
@@ -93,96 +44,74 @@ const publishToRelay = async (
   eventId: string
 ): Promise<RelayPublishResult> => {
   const startTime = Date.now();
-  let resolved = false;
+  console.info(`[${relayUrl}] Starting publishToRelay for ${eventId}`);
 
-  return new Promise<RelayPublishResult>((resolve) => {
+  let relay: Relay | null = null;
+
+  try {
+    // Create Relay instance
     console.info(`[${relayUrl}] Creating Relay instance`);
-    let relay: Relay;
-    try {
-      relay = new Relay(relayUrl);
-      console.info(`[${relayUrl}] Relay instance created`);
-    } catch (error) {
-      console.error(`[${relayUrl}] Failed to create Relay instance:`, error);
-      const latencyMs = Date.now() - startTime;
-      resolve({
-        relay: relayUrl,
-        ok: false,
-        latencyMs,
-        error: `RELAY_INIT_ERROR: ${error instanceof Error ? error.message : String(error)}`,
-      });
-      return;
-    }
+    relay = new Relay(relayUrl);
+    console.info(`[${relayUrl}] Relay instance created`);
 
-    let timeoutId: ReturnType<typeof setTimeout> | null = null;
-    const connectionTimeoutId = { value: null as ReturnType<typeof setTimeout> | null };
-    const connected = { value: false };
+    // Set up connection timeout
+    const connectionTimeout = new Promise<never>((_, reject) => {
+      setTimeout(() => {
+        reject(new Error('CONNECTION_TIMEOUT'));
+      }, CONNECTION_TIMEOUT_MS);
+    });
 
-    const cleanup = () => {
-      if (timeoutId) {
-        clearTimeout(timeoutId);
-        timeoutId = null;
-      }
-      if (connectionTimeoutId.value) {
-        clearTimeout(connectionTimeoutId.value);
-        connectionTimeoutId.value = null;
-      }
+    // Connect with timeout
+    console.info(`[${relayUrl}] Calling relay.connect()`);
+    await Promise.race([relay.connect(), connectionTimeout]);
+    console.info(`[${relayUrl}] Connected successfully`);
+
+    // Set up publish timeout
+    const publishTimeout = new Promise<never>((_, reject) => {
+      setTimeout(() => {
+        reject(new Error('PUBLISH_TIMEOUT'));
+      }, PER_RELAY_TIMEOUT_MS - CONNECTION_TIMEOUT_MS);
+    });
+
+    // Publish with timeout
+    console.info(`[${relayUrl}] Publishing event ${eventId}`);
+    const publishPromise = relay.publish(event);
+    const result = await Promise.race([publishPromise, publishTimeout]);
+    
+    console.info(`[${relayUrl}] Event ${eventId} published successfully, result: ${result}`);
+    const latencyMs = Date.now() - startTime;
+    
+    return {
+      relay: relayUrl,
+      ok: true,
+      latencyMs,
+    };
+  } catch (error) {
+    console.error(`[${relayUrl}] Error in publishToRelay:`, error);
+    const latencyMs = Date.now() - startTime;
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    
+    return {
+      relay: relayUrl,
+      ok: false,
+      latencyMs,
+      error: errorMessage === 'CONNECTION_TIMEOUT' 
+        ? 'CONNECTION_TIMEOUT'
+        : errorMessage === 'PUBLISH_TIMEOUT'
+        ? 'PUBLISH_TIMEOUT'
+        : `ERROR: ${errorMessage}`,
+    };
+  } finally {
+    // Cleanup
+    if (relay) {
       try {
         relay.close();
-      } catch {
-        // Ignore errors during cleanup
+        console.info(`[${relayUrl}] Relay closed`);
+      } catch (closeError) {
+        console.warn(`[${relayUrl}] Error closing relay:`, closeError);
       }
-    };
-
-    const finish = (ok: boolean, error?: string) => {
-      if (resolved) {
-        return;
-      }
-      resolved = true;
-      cleanup();
-      const latencyMs = Date.now() - startTime;
-      resolve({
-        relay: relayUrl,
-        ok,
-        latencyMs,
-        error,
-      });
-    };
-
-    // Overall timeout for the entire operation
-    timeoutId = setTimeout(() => {
-      console.warn(`[${relayUrl}] Overall timeout reached after ${PER_RELAY_TIMEOUT_MS}ms`);
-      finish(false, 'TIMEOUT');
-    }, PER_RELAY_TIMEOUT_MS);
-
-    // Connection timeout - if we don't connect within this time, fail
-    connectionTimeoutId.value = setTimeout(() => {
-      if (!connected.value) {
-        console.error(`Connection timeout: failed to connect to ${relayUrl} within ${CONNECTION_TIMEOUT_MS}ms`);
-        finish(false, 'CONNECTION_TIMEOUT');
-      }
-    }, CONNECTION_TIMEOUT_MS);
-
-    setupRelayHandlers(relay, relayUrl, event, eventId, connected, connectionTimeoutId, finish);
-
-    // Handle connect() promise rejection
-    console.info(`[${relayUrl}] About to call relay.connect()`);
-    try {
-      console.info(`[${relayUrl}] Calling relay.connect()`);
-      const connectPromise = relay.connect();
-      console.info(`[${relayUrl}] relay.connect() returned, type: ${typeof connectPromise}`);
-      
-      // We can't use await here since we're in a Promise constructor
-      // eslint-disable-next-line promise/prefer-await-to-then, promise/prefer-await-to-callbacks
-      connectPromise.catch((error: unknown) => {
-        console.error(`[${relayUrl}] relay.connect() rejected:`, error);
-        finish(false, `CONNECTION_ERROR: ${error instanceof Error ? error.message : String(error)}`);
-      });
-    } catch (error) {
-      // Catch synchronous errors
-      console.error(`[${relayUrl}] Synchronous error calling relay.connect():`, error);
-      finish(false, `CONNECTION_ERROR_SYNC: ${error instanceof Error ? error.message : String(error)}`);
     }
-  });
+  }
 };
 
 /**

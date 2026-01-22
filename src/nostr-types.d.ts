@@ -10,16 +10,6 @@ declare module 'nostr-tools' {
     sig: string;
   }
 
-
-  export interface PublishResult {
-    on(_event: 'ok' | 'failed', _handler: (_reason?: string) => void): void;
-  }
-
-  export interface Subscription {
-    on(_event: 'event', _handler: (_event: Event) => void): void;
-    unsub(): void;
-  }
-
   export interface Filter {
     ids?: string[];
     kinds?: number[];
@@ -28,12 +18,20 @@ declare module 'nostr-tools' {
     [key: string]: unknown;
   }
 
+  export interface Subscription {
+    onevent: (evt: Event) => void;
+    oneose?: () => void;
+    onclose?: (reason: string) => void;
+    close(reason?: string): void;
+  }
+
   export class Relay {
-    constructor(url: string);
+    constructor(url: string, options?: { enablePing?: boolean; enableReconnect?: boolean });
+    static connect(url: string, options?: { enablePing?: boolean; enableReconnect?: boolean }): Promise<Relay>;
     connect(): Promise<void>;
     close(): void;
-    publish(_event: Event): PublishResult;
-    sub(_filters: Filter[]): Subscription;
-    on(_event: 'connect' | 'error' | 'disconnect', _handler: (..._args: unknown[]) => void): void;
+    publish(event: Event): Promise<string>;
+    subscribe(filters: Filter[], params?: { onevent?: (evt: Event) => void; oneose?: () => void; onclose?: (reason: string) => void }): Subscription;
+    get connected(): boolean;
   }
 }
