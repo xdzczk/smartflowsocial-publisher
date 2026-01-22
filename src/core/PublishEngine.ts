@@ -8,74 +8,117 @@ import { publishToRelay } from './RelayPublisher';
 import type { PublishOutcome, RelayResult, RelayUrl, SignedEvent } from './types';
 
 /**
- * Limits concurrency of async operations
- * Uses Promise.race to wait for one to complete when at limit
- * Properly cleans up completed promises to prevent memory leaks
+ * Publishes to relays with concurrency control and early return
+ * Returns as soon as minSuccessRelays is reached
+ * @param relays Array of relays to publish to
+ * @param event The event to publish
+ * @param policy Publish policy
+ * @param logger Logger instance
+ * @param abortController Abort controller for cancellation
+ * @param metrics Optional metrics instance
+ * @param minSuccessRelays Minimum number of successful relays before returning
+ * @param onResult Callback when a result is received
+ * @returns Promise that resolves with results when minSuccessRelays is reached or all relays complete
  */
-async function limitConcurrency<T, R>(
-  items: T[],
-  limit: number,
-  fn: (item: T) => Promise<R>
-): Promise<R[]> {
-  const results: R[] = [];
-  let executing = new Set<Promise<void>>();
-
-  for (const item of items) {
-    // Wait if we're at the limit
-    if (executing.size >= limit) {
+async function publishWithEarlyReturn(
+  relays: Relay[],
+  event: SignedEvent,
+  policy: PublishPolicy,
+  logger: Logger,
+  abortController: AbortController,
+  metrics: Metrics | undefined,
+  minSuccessRelays: number,
+  onResult: (result: RelayResult) => void
+): Promise<RelayResult[]> {
+  const results: RelayResult[] = [];
+  let successCount = 0;
+  const pendingPromises = new Map<RelayUrl, Promise<RelayResult>>();
+  const executing = new Set<Promise<RelayResult>>();
+  
+  // Helper to start a publish for a relay
+  const startPublish = (relay: Relay): void => {
+    if (abortController.signal.aborted) {
+      return;
+    }
+    
+    const publishPromise = publishToRelay(
+      relay,
+      event,
+      policy,
+      logger,
+      abortController.signal,
+      metrics
+    );
+    
+    pendingPromises.set(relay.url, publishPromise);
+    
+    // Wrap the promise to handle result processing and cleanup
+    // eslint-disable-next-line promise/prefer-await-to-then
+    const wrappedPromise = publishPromise.then((result) => {
+      results.push(result);
+      pendingPromises.delete(relay.url);
+      
+      if (result.status === 'success') {
+        successCount++;
+      }
+      
+      onResult(result);
+      
+      // Removed abort logic - remaining publishes will continue in background
+      
+      return result;
+    });
+    
+    // Clean up from executing set when done
+    // eslint-disable-next-line promise/prefer-await-to-then
+    wrappedPromise.finally(() => {
+      executing.delete(wrappedPromise);
+      // eslint-disable-next-line promise/prefer-await-to-then
+    }).catch(() => {
+      // Ignore errors in cleanup
+    });
+    
+    executing.add(wrappedPromise);
+  };
+  
+  // Start publishes with concurrency limit
+  let relayIndex = 0;
+  while (relayIndex < relays.length && !abortController.signal.aborted) {
+    // Wait if we're at the concurrency limit
+    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+    while (executing.size >= policy.relayConcurrency && !abortController.signal.aborted) {
       // Wait for at least one promise to complete
       await Promise.race(executing);
-      // Clean up settled promises by filtering the set
-      // Settled promises resolve/reject immediately on next Promise.race
-      // We create a new set with only pending promises
-      const pendingPromises = new Set<Promise<void>>();
-      for (const promise of executing) {
-        // Check if promise is settled by racing with a resolved promise
-        // If the promise is already settled, Promise.race returns immediately
-        // We can't directly check, so we'll let Promise.race handle it naturally
-        // and just rebuild the set periodically
-        pendingPromises.add(promise);
-      }
-      // In practice, settled promises won't block Promise.race, but we should
-      // still clean them up. Since we can't directly check, we'll use a marker approach
-      executing = pendingPromises;
+      // Clean up: settled promises are automatically removed in their finally block
     }
-
-    // Start the operation
-    let operationPromise: Promise<R>;
-    try {
-      operationPromise = fn(item);
-    } catch (error) {
-      // Create a rejected promise to maintain consistency
-      operationPromise = Promise.reject(error);
+    
+    // Removed early break - start all publishes regardless of success count
+    
+    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+    if (!abortController.signal.aborted) {
+      startPublish(relays[relayIndex]);
+      relayIndex++;
     }
-
-    // Create a promise that tracks completion
-    // Note: publishToRelay always returns RelayResult, never throws
-    const promise = (async () => {
-      const result = await operationPromise;
-      results.push(result);
-    })();
-
-    // Mark promise for removal when it completes
-    // We can't use await here as we need to continue the loop
-    // Using void to explicitly mark as fire-and-forget
-     
-    void (promise
-      // eslint-disable-next-line promise/prefer-await-to-then
-      .finally(() => {
-        executing.delete(promise);
-      })
-      // eslint-disable-next-line promise/prefer-await-to-then
-      .catch(() => {
-        // Ignore errors in cleanup
-      }));
-
-    executing.add(promise);
   }
-
-  // Wait for all remaining operations
-  await Promise.all(executing);
+  
+  // Wait for results, checking for early return
+  while (executing.size > 0 && !abortController.signal.aborted) {
+    await Promise.race(executing);
+    
+    // Check if we've reached minSuccessRelays - return early but don't abort
+    if (successCount >= minSuccessRelays) {
+      // Return early with current results
+      // Remaining publishes will continue in background
+      return results;
+    }
+  }
+  
+  // Wait for any remaining promises that were already started
+  // (but don't wait if we've already reached minSuccessRelays)
+  if (pendingPromises.size > 0 && successCount < minSuccessRelays) {
+    await Promise.all(Array.from(pendingPromises.values()));
+  }
+  
   return results;
 }
 
@@ -207,7 +250,7 @@ export async function publishSignedEvent(
   }
 
   const completedRelays = new Set<RelayUrl>();
-  let results: RelayResult[] = [];
+  const results: RelayResult[] = [];
 
   // Create abort controller for overall timeout
   const abortController = new AbortController();
@@ -216,29 +259,32 @@ export async function publishSignedEvent(
     logger.warn(`[${eventId}] Overall timeout of ${policy.overallTimeoutMs}ms exceeded`);
   }, policy.overallTimeoutMs);
 
-  // Helper to process publish results
-  const processPublishResults = (publishResults: RelayResult[]): void => {
-    results = publishResults;
-    for (const result of publishResults) {
-      completedRelays.add(result.relay);
-      // Update health status
-      if (result.status === 'success') {
-        healthCheckManager?.recordSuccess(result.relay);
-      } else {
-        healthCheckManager?.recordFailure(result.relay);
-      }
+  // Helper to process a single publish result
+  const processPublishResult = (result: RelayResult): void => {
+    results.push(result);
+    completedRelays.add(result.relay);
+    // Update health status
+    if (result.status === 'success') {
+      healthCheckManager?.recordSuccess(result.relay);
+    } else {
+      healthCheckManager?.recordFailure(result.relay);
     }
   };
 
-  // Publish to all relays with concurrency limit
+  // Publish to all relays with concurrency limit and early return
   const publishPromise = (async () => {
     try {
-      const publishResults = await limitConcurrency(
+      await publishWithEarlyReturn(
         healthyRelays,
-        policy.relayConcurrency,
-        (relay) => publishToRelay(relay, event, policy, logger, abortController.signal, metrics)
+        event,
+        policy,
+        logger,
+        abortController,
+        metrics,
+        policy.minSuccessRelays,
+        processPublishResult
       );
-      processPublishResults(publishResults);
+      // Results are already processed via onResult callback
     } catch (error) {
       logger.error(`[${eventId}] Error in concurrent publish: ${error}`);
       throw error;
