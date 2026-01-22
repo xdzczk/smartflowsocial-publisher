@@ -1,3 +1,5 @@
+import type { PublishOutcome, RelayResult } from '../core/types';
+
 /**
  * Policy for publishing events to relays
  * All timeouts, concurrency, and retry behavior is policy-driven
@@ -29,6 +31,7 @@ export interface PublishPolicy {
   /**
    * Minimum number of successful relays for overall success
    * If fewer succeed, outcome is 'partial' or 'failed'
+   * @deprecated Use successCriteria function instead for more flexibility
    */
   minSuccessRelays: number;
 
@@ -46,4 +49,12 @@ export interface PublishPolicy {
      */
     backoffMs: number;
   };
+
+  /**
+   * Success criteria function that determines publish outcome
+   * Policy defines "what success means", orchestration uses it
+   * @param results Array of relay results
+   * @returns Classified publish outcome
+   */
+  successCriteria: (results: RelayResult[]) => PublishOutcome;
 }

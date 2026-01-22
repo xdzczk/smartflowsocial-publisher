@@ -26,6 +26,16 @@ describe('Chaos Tests - Timeout Scenarios', () => {
         overallTimeoutMs: 5000,
         minSuccessRelays: 1,
         retry: { maxAttempts: 0, backoffMs: 100 },
+        successCriteria: (results) => {
+          const successCount = results.filter((r) => r.status === 'success').length;
+          if (successCount >= 1) {
+            if (successCount === results.length) {
+              return { status: 'success', relays: results };
+            }
+            return { status: 'partial', relays: results };
+          }
+          return { status: 'failed', relays: results };
+        },
       };
       const relays = createMockRelays([RELAY1_URL]);
       const event = createSignedEvent();
@@ -52,6 +62,16 @@ describe('Chaos Tests - Timeout Scenarios', () => {
         overallTimeoutMs: 5000,
         minSuccessRelays: 1,
         retry: { maxAttempts: 0, backoffMs: 100 },
+        successCriteria: (results) => {
+          const successCount = results.filter((r) => r.status === 'success').length;
+          if (successCount >= 1) {
+            if (successCount === results.length) {
+              return { status: 'success', relays: results };
+            }
+            return { status: 'partial', relays: results };
+          }
+          return { status: 'failed', relays: results };
+        },
       };
       const relays = createMockRelays([RELAY1_URL]);
       const event = createSignedEvent();
@@ -81,6 +101,16 @@ describe('Chaos Tests - Timeout Scenarios', () => {
         overallTimeoutMs: 1000, // Short overall timeout
         minSuccessRelays: 1,
         retry: { maxAttempts: 0, backoffMs: 100 },
+        successCriteria: (results) => {
+          const successCount = results.filter((r) => r.status === 'success').length;
+          if (successCount >= 1) {
+            if (successCount === results.length) {
+              return { status: 'success', relays: results };
+            }
+            return { status: 'partial', relays: results };
+          }
+          return { status: 'failed', relays: results };
+        },
       };
       const relays = createMockRelays([
         'wss://relay1.example.com',
@@ -117,6 +147,16 @@ describe('Chaos Tests - Timeout Scenarios', () => {
         overallTimeoutMs: 1000,
         minSuccessRelays: 1,
         retry: { maxAttempts: 0, backoffMs: 100 },
+        successCriteria: (results) => {
+          const successCount = results.filter((r) => r.status === 'success').length;
+          if (successCount >= 1) {
+            if (successCount === results.length) {
+              return { status: 'success', relays: results };
+            }
+            return { status: 'partial', relays: results };
+          }
+          return { status: 'failed', relays: results };
+        },
       };
       const relays = createMockRelays([RELAY1_URL]);
       const event = createSignedEvent();
@@ -147,6 +187,16 @@ describe('Chaos Tests - Timeout Scenarios', () => {
         overallTimeoutMs: 2000,
         minSuccessRelays: 1,
         retry: { maxAttempts: 0, backoffMs: 100 },
+        successCriteria: (results) => {
+          const successCount = results.filter((r) => r.status === 'success').length;
+          if (successCount >= 1) {
+            if (successCount === results.length) {
+              return { status: 'success', relays: results };
+            }
+            return { status: 'partial', relays: results };
+          }
+          return { status: 'failed', relays: results };
+        },
       };
       const relays = createMockRelays([RELAY1_URL]);
       const event = createSignedEvent();

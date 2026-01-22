@@ -28,6 +28,16 @@ describe('RelayPublisher', () => {
       maxAttempts: 0,
       backoffMs: 100,
     },
+    successCriteria: (results) => {
+      const successCount = results.filter((r) => r.status === 'success').length;
+      if (successCount >= 1) {
+        if (successCount === results.length) {
+          return { status: 'success', relays: results };
+        }
+        return { status: 'partial', relays: results };
+      }
+      return { status: 'failed', relays: results };
+    },
   };
 
   describe('successful publish', () => {

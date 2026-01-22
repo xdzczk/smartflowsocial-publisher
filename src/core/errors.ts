@@ -115,3 +115,28 @@ export class ConfigurationError extends AppError {
     super(message, details);
   }
 }
+
+/**
+ * Replay protection error
+ * Used when an event has already been published (replay attack prevention)
+ */
+export class ReplayError extends AppError {
+  readonly code = 'REPLAY_ERROR';
+  readonly httpStatus = 409; // Conflict
+  readonly eventId?: string;
+  readonly suggestion = 'Event has already been published. Replay protection prevents duplicate publishing for 24 hours.';
+
+  constructor(
+    message: string,
+    eventId?: string,
+    details?: Record<string, unknown>
+  ) {
+    super(message, {
+      ...details,
+      eventId,
+      ttlHours: 24,
+      replayProtection: true,
+    });
+    this.eventId = eventId;
+  }
+}

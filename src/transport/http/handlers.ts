@@ -2,26 +2,33 @@ import type { ExecutionContext, Request } from '@cloudflare/workers-types';
 
 import { NostrRelayAdapter } from '../../adapters/nostr/relayAdapter';
 import { publishBatch } from '../../core/BatchPublisher';
-import { ValidationError } from '../../core/errors';
+import { ReplayError, ValidationError } from '../../core/errors';
 import { fetchProfile } from '../../core/ProfileEngine';
-import { publishSignedEvent } from '../../core/PublishEngine';
+import { publishSignedEvent, publishSignedEventStreaming } from '../../core/PublishEngine';
+import type { Relay } from '../../core/Relay';
 import { normalizeRelayUrls } from '../../core/RelayUrl';
 import type { SignedEvent } from '../../core/types';
 import type { Logger } from '../../observability/logger';
 import { ConsoleLogger } from '../../observability/logger';
+import type { Metrics } from '../../observability/metrics';
 import { createMetrics } from '../../observability/metrics';
 import { aggressivePolicy } from '../../policies/aggressivePolicy';
 import { conservativePolicy } from '../../policies/conservativePolicy';
 import { defaultPolicy } from '../../policies/defaultPolicy';
 import { defaultProfilePolicy } from '../../policies/ProfilePolicy';
+import type { PublishPolicy } from '../../policies/PublishPolicy';
+import { checkAndRecordEvent } from '../../security/replayProtection';
 import type { Env } from '../../types';
 import { validateProfileRequest } from '../../validation/schemas';
 
 import {
   createResponseHeaders,
+  createSSEHeaders,
+  formatSSEMessage,
   mapErrorToResponse,
   mapPublishOutcomeToResponse,
   parsePublishRequest,
+  type RelayPublishResult,
 } from './mappers';
 
 const HOUR = 60 * 60;
@@ -87,6 +94,119 @@ function selectPolicy(queryParams: URLSearchParams) {
 }
 
 /**
+ * Handles SSE streaming publish requests
+ * Streams results as they come in via Server-Sent Events
+ * Note: Replay protection is checked before calling this function
+ */
+async function handleSSEPublish(
+  event: SignedEvent,
+  relays: Relay[],
+  policy: PublishPolicy,
+  logger: Logger,
+  metrics: Metrics,
+  correlationId: string | undefined,
+  _startTime: number
+): Promise<Response> {
+  const headers = createSSEHeaders(correlationId);
+  const totalRelays = relays.length;
+  let completedCount = 0;
+  let successCount = 0;
+  const allResults: RelayPublishResult[] = [];
+
+  // Create a readable stream for SSE
+  const stream = new ReadableStream({
+    async start(controller) {
+      const encoder = new TextEncoder();
+
+      try {
+        // Start streaming publish
+        const outcome = await publishSignedEventStreaming(
+          event,
+          relays,
+          policy,
+          logger,
+          (result) => {
+            // Convert RelayResult to RelayPublishResult
+            const publishResult: RelayPublishResult = {
+              relay: result.relay,
+              ok: result.status === 'success',
+              latencyMs: result.latencyMs,
+              error: result.error,
+            };
+
+            allResults.push(publishResult);
+            completedCount++;
+            if (result.status === 'success') {
+              successCount++;
+            }
+
+            // Send result event
+            const resultEvent = formatSSEMessage({
+              type: 'result',
+              data: publishResult,
+            });
+            controller.enqueue(encoder.encode(resultEvent));
+
+            // Send progress event
+            const progressEvent = formatSSEMessage({
+              type: 'progress',
+              data: {
+                completed: completedCount,
+                total: totalRelays,
+                successCount,
+              },
+            });
+            controller.enqueue(encoder.encode(progressEvent));
+          },
+          metrics
+        );
+
+        // Send complete event with final results
+        const completeEvent = formatSSEMessage({
+          type: 'complete',
+          data: {
+            results: allResults,
+            status: outcome.status,
+          },
+        });
+        controller.enqueue(encoder.encode(completeEvent));
+
+        metrics.increment(METRIC_HTTP_RESPONSES, METRIC_INCREMENT_VALUE, {
+          endpoint: ENDPOINT_PUBLISH,
+          status: STATUS_200,
+          stream: 'true',
+        });
+
+        controller.close();
+      } catch (error) {
+        logger.error('Error in SSE publish:', error);
+        const { response } = mapErrorToResponse(error);
+        
+        // Send error event
+        const errorEvent = formatSSEMessage({
+          type: 'error',
+          data: response,
+        });
+        controller.enqueue(encoder.encode(errorEvent));
+
+        metrics.increment(METRIC_HTTP_RESPONSES, METRIC_INCREMENT_VALUE, {
+          endpoint: ENDPOINT_PUBLISH,
+          status: STATUS_500,
+          stream: 'true',
+        });
+
+        controller.close();
+      }
+    },
+  });
+
+  return new Response(stream, {
+    status: 200,
+    headers,
+  });
+}
+
+/**
  * HTTP handler for publishing events
  * @param request The HTTP request
  * @param _env Environment variables (unused)
@@ -141,13 +261,41 @@ export async function publishHandler(
 
     const { event, relayUrls } = parsePublishRequest(body);
 
+    // Replay protection: check if event has already been published
+    const isReplay = await checkAndRecordEvent(event.id, env.PROFILES);
+    if (isReplay) {
+      throw new ReplayError(
+        `Event ${event.id} has already been published. Replay protection prevents duplicate publishing.`,
+        event.id,
+        { eventId: event.id }
+      );
+    }
+
     // Select policy from query params
     const url = new URL(request.url);
     const policy = selectPolicy(url.searchParams);
 
+    // Check if SSE streaming is requested
+    const streamMode = url.searchParams.get('stream') === 'true' || 
+                       request.headers.get('Accept')?.includes('text/event-stream');
+
     // Create relay adapters
     const relays = relayUrls.map((url) => new NostrRelayAdapter(url));
 
+    // Handle SSE streaming mode
+    if (streamMode) {
+      return handleSSEPublish(
+        event,
+        relays,
+        policy,
+        logger,
+        metrics,
+        correlationId,
+        startTime
+      );
+    }
+
+    // Standard non-streaming mode
     // Publish using core engine
     // event is already validated as SignedEvent by parsePublishRequest
     const outcome = await publishSignedEvent(
@@ -536,6 +684,25 @@ export async function batchPublishHandler(
 
     // Validate all events
     const signedEvents = await validateBatchEvents(batchRequest.events);
+
+    // Replay protection: check all events in batch
+    const replayChecks = await Promise.all(
+      signedEvents.map((event) => checkAndRecordEvent(event.id, env.PROFILES))
+    );
+    
+    // Find any replay events
+    const replayEvents = signedEvents.filter((_, index) => replayChecks[index]);
+    if (replayEvents.length > 0) {
+      const eventIds = replayEvents.map((e) => e.id).join(', ');
+      throw new ReplayError(
+        `Batch contains ${replayEvents.length} event(s) that have already been published: ${eventIds}`,
+        replayEvents[0]?.id,
+        { 
+          replayCount: replayEvents.length,
+          replayEventIds: replayEvents.map((e) => e.id)
+        }
+      );
+    }
 
     // Normalize relays
     const relayUrls = normalizeRelayUrls(batchRequest.relays);

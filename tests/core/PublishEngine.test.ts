@@ -30,6 +30,16 @@ describe('PublishEngine', () => {
       maxAttempts: 0,
       backoffMs: 100,
     },
+    successCriteria: (results) => {
+      const successCount = results.filter((r) => r.status === 'success').length;
+      if (successCount >= 1) {
+        if (successCount === results.length) {
+          return { status: 'success', relays: results };
+        }
+        return { status: 'partial', relays: results };
+      }
+      return { status: 'failed', relays: results };
+    },
   };
 
   describe('single relay', () => {
@@ -114,6 +124,17 @@ describe('PublishEngine', () => {
       const policy: PublishPolicy = {
         ...testPolicy,
         minSuccessRelays: 2,
+        successCriteria: (results) => {
+          const successCount = results.filter((r) => r.status === 'success').length;
+          const minSuccessRelays = 2;
+          if (successCount >= minSuccessRelays) {
+            if (successCount === results.length) {
+              return { status: 'success', relays: results };
+            }
+            return { status: 'partial', relays: results };
+          }
+          return { status: 'failed', relays: results };
+        },
       };
       const event = createSignedEvent();
 
@@ -168,6 +189,17 @@ describe('PublishEngine', () => {
       const policy: PublishPolicy = {
         ...testPolicy,
         minSuccessRelays: 3,
+        successCriteria: (results) => {
+          const successCount = results.filter((r) => r.status === 'success').length;
+          const minSuccessRelays = 3;
+          if (successCount >= minSuccessRelays) {
+            if (successCount === results.length) {
+              return { status: 'success', relays: results };
+            }
+            return { status: 'partial', relays: results };
+          }
+          return { status: 'failed', relays: results };
+        },
       };
       const event = createSignedEvent();
 

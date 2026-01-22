@@ -1,11 +1,7 @@
 import type { Logger } from '../observability/logger';
 
+import { RelayStateMachineManager, type CircuitState } from './stateMachine';
 import type { RelayUrl } from './types';
-
-/**
- * Circuit breaker states
- */
-type CircuitState = 'closed' | 'open' | 'half-open';
 
 /**
  * Circuit breaker configuration
@@ -52,26 +48,26 @@ interface FailureRecord {
 /**
  * Circuit breaker for relay operations
  * Prevents cascading failures by opening circuit after threshold failures
+ * Uses state machine for formal state tracking
  */
 export class CircuitBreaker {
-  private state: CircuitState = 'closed';
   private failures: FailureRecord[] = [];
-  private halfOpenAttempts = 0;
   private halfOpenSuccesses = 0;
   private lastFailureTime: number | null = null;
 
   constructor(
     private readonly relayUrl: RelayUrl,
     private readonly config: CircuitBreakerConfig,
-    private readonly logger: Logger
+    private readonly logger: Logger,
+    private readonly stateMachine: RelayStateMachineManager
   ) {}
 
   /**
-   * Gets current circuit state
+   * Gets current circuit state from state machine
    */
   getState(): CircuitState {
     this.cleanup();
-    return this.state;
+    return this.stateMachine.getMachine(this.relayUrl).getCircuitState();
   }
 
   /**
@@ -79,17 +75,18 @@ export class CircuitBreaker {
    */
   recordSuccess(): void {
     this.cleanup();
+    const machine = this.stateMachine.getMachine(this.relayUrl);
+    const circuitState = machine.getCircuitState();
 
-    if (this.state === 'half-open') {
+    if (circuitState === 'half-open') {
       this.halfOpenSuccesses++;
       if (this.halfOpenSuccesses >= this.config.successThreshold) {
         this.logger.info(`[CircuitBreaker] ${this.relayUrl} circuit closed (recovered)`);
-        this.state = 'closed';
-        this.halfOpenAttempts = 0;
+        machine.setCircuitState('closed');
         this.halfOpenSuccesses = 0;
         this.failures = [];
       }
-    } else if (this.state === 'closed') {
+    } else if (circuitState === 'closed') {
       // Reset failure count on success
       this.failures = [];
     }
@@ -100,18 +97,19 @@ export class CircuitBreaker {
    */
   recordFailure(): void {
     this.cleanup();
+    const machine = this.stateMachine.getMachine(this.relayUrl);
+    const circuitState = machine.getCircuitState();
 
     const now = Date.now();
     this.failures.push({ timestamp: now });
     this.lastFailureTime = now;
 
-    if (this.state === 'half-open') {
+    if (circuitState === 'half-open') {
       // Failure in half-open state - open circuit again
       this.logger.warn(`[CircuitBreaker] ${this.relayUrl} circuit opened (half-open failure)`);
-      this.state = 'open';
-      this.halfOpenAttempts = 0;
+      machine.setCircuitState('open');
       this.halfOpenSuccesses = 0;
-    } else if (this.state === 'closed') {
+    } else if (circuitState === 'closed') {
       // Check if we should open circuit
       const recentFailures = this.failures.filter(
         (f) => f.timestamp > now - this.config.failureWindowMs
@@ -121,7 +119,7 @@ export class CircuitBreaker {
         this.logger.warn(
           `[CircuitBreaker] ${this.relayUrl} circuit opened (${recentFailures.length} failures)`
         );
-        this.state = 'open';
+        machine.setCircuitState('open');
       }
     }
   }
@@ -132,20 +130,21 @@ export class CircuitBreaker {
    */
   canAttempt(): boolean {
     this.cleanup();
+    const machine = this.stateMachine.getMachine(this.relayUrl);
+    const circuitState = machine.getCircuitState();
 
-    if (this.state === 'closed') {
+    if (circuitState === 'closed') {
       return true;
     }
 
-    if (this.state === 'open') {
+    if (circuitState === 'open') {
       // Check if we should transition to half-open
       if (
         this.lastFailureTime &&
         Date.now() - this.lastFailureTime >= this.config.halfOpenTimeoutMs
       ) {
         this.logger.info(`[CircuitBreaker] ${this.relayUrl} circuit half-open (testing recovery)`);
-        this.state = 'half-open';
-        this.halfOpenAttempts = 0;
+        machine.setCircuitState('half-open');
         this.halfOpenSuccesses = 0;
         return true;
       }
@@ -169,14 +168,18 @@ export class CircuitBreaker {
 
 /**
  * Circuit breaker manager for multiple relays
+ * Uses state machine for formal state tracking
  */
 export class CircuitBreakerManager {
   private breakers = new Map<RelayUrl, CircuitBreaker>();
+  private readonly stateMachineManager: RelayStateMachineManager;
 
   constructor(
     private readonly config: CircuitBreakerConfig,
     private readonly logger: Logger
-  ) {}
+  ) {
+    this.stateMachineManager = new RelayStateMachineManager(logger);
+  }
 
   /**
    * Gets or creates a circuit breaker for a relay
@@ -184,7 +187,7 @@ export class CircuitBreakerManager {
   getBreaker(relayUrl: RelayUrl): CircuitBreaker {
     let breaker = this.breakers.get(relayUrl);
     if (!breaker) {
-      breaker = new CircuitBreaker(relayUrl, this.config, this.logger);
+      breaker = new CircuitBreaker(relayUrl, this.config, this.logger, this.stateMachineManager);
       this.breakers.set(relayUrl, breaker);
     }
     return breaker;
@@ -216,5 +219,6 @@ export class CircuitBreakerManager {
    */
   reset(): void {
     this.breakers.clear();
+    this.stateMachineManager.reset();
   }
 }

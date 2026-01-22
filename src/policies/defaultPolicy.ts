@@ -1,9 +1,24 @@
+import type { PublishOutcome, RelayResult } from '../core/types';
+
 import type { PublishPolicy } from './PublishPolicy';
 
 /**
- * Default policy with sensible defaults
- * Balanced between speed and reliability
+ * Default success criteria: at least 1 successful relay
  */
+function defaultSuccessCriteria(results: RelayResult[]): PublishOutcome {
+  const successCount = results.filter((r) => r.status === 'success').length;
+  const minSuccessRelays = 1;
+
+  if (successCount >= minSuccessRelays) {
+    if (successCount === results.length) {
+      return { status: 'success', relays: results };
+    }
+    return { status: 'partial', relays: results };
+  }
+
+  return { status: 'failed', relays: results };
+}
+
 /**
  * Default policy with sensible defaults
  * Balanced between speed and reliability
@@ -19,4 +34,5 @@ export const defaultPolicy: PublishPolicy = {
     maxAttempts: 1, // One retry for transient failures
     backoffMs: 1000,
   },
+  successCriteria: defaultSuccessCriteria,
 };

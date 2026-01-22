@@ -1,5 +1,8 @@
 import type { Logger } from '../observability/logger';
 
+import type { RelayOperationStateMachine } from './stateMachine';
+import type { RelayUrl } from './types';
+
 /**
  * Determines if an error is retryable
  * @param error The error to check
@@ -114,22 +117,109 @@ async function handleRetry(
   });
 }
 
+/**
+ * Updates state machine for retry attempt
+ */
+function updateStateMachineForRetry(
+  stateMachine: RelayOperationStateMachine | undefined,
+  attempt: number
+): void {
+  if (stateMachine && attempt > 0) {
+    if (stateMachine.canTransitionTo('retry_in_progress')) {
+      stateMachine.transition('retry_in_progress');
+    }
+  }
+}
+
+/**
+ * Updates state machine on success
+ */
+function updateStateMachineOnSuccess(
+  stateMachine: RelayOperationStateMachine | undefined
+): void {
+  if (stateMachine?.canTransitionTo('success')) {
+    stateMachine.transition('success');
+  }
+}
+
+/**
+ * Updates state machine on failure
+ */
+function updateStateMachineOnFailure(
+  stateMachine: RelayOperationStateMachine | undefined,
+  attempt: number,
+  maxAttempts: number,
+  error: unknown
+): void {
+  if (!stateMachine) {
+    return;
+  }
+
+  if (stateMachine.canTransitionTo('failure')) {
+    stateMachine.transition('failure');
+  }
+
+  // Check if we can retry
+  if (attempt < maxAttempts && isRetryableError(error)) {
+    if (stateMachine.canTransitionTo('retry_eligible')) {
+      stateMachine.transition('retry_eligible');
+    }
+  } else {
+    // No more retries or non-retryable error
+    if (stateMachine.canTransitionTo('circuit_open')) {
+      stateMachine.transition('circuit_open');
+    }
+  }
+}
+
+/**
+ * Initializes state machine if provided
+ */
+function initializeStateMachine(
+  stateMachine: RelayOperationStateMachine | undefined,
+  relayUrl: RelayUrl | undefined
+): void {
+  if (stateMachine && relayUrl && stateMachine.getState() === 'idle') {
+    stateMachine.transition('connecting');
+  }
+}
+
+/**
+ * Retries an async operation with exponential backoff and state machine tracking
+ * @param operation The async operation to retry
+ * @param maxAttempts Maximum number of attempts (including initial)
+ * @param baseBackoffMs Base backoff delay in milliseconds
+ * @param logger Logger instance
+ * @param abortSignal Optional abort signal to cancel retries
+ * @param stateMachine Optional state machine for tracking retry state
+ * @param relayUrl Optional relay URL for state machine tracking
+ * @returns Result of the operation
+ * @throws Last error if all attempts fail
+ */
 export async function retryWithBackoff<T>(
   operation: () => Promise<T>,
   maxAttempts: number,
   baseBackoffMs: number,
   logger: Logger,
-  abortSignal?: AbortSignal
+  abortSignal?: AbortSignal,
+  stateMachine?: RelayOperationStateMachine,
+  relayUrl?: RelayUrl
 ): Promise<T> {
   let lastError: unknown;
   let attempt = 0;
 
+  initializeStateMachine(stateMachine, relayUrl);
+
   while (attempt < maxAttempts) {
     try {
-      return await attemptOperation(operation, attempt, logger, abortSignal);
+      updateStateMachineForRetry(stateMachine, attempt);
+      const result = await attemptOperation(operation, attempt, logger, abortSignal);
+      updateStateMachineOnSuccess(stateMachine);
+      return result;
     } catch (error) {
       lastError = error;
       attempt++;
+      updateStateMachineOnFailure(stateMachine, attempt, maxAttempts, error);
       await handleRetry(error, attempt, maxAttempts, baseBackoffMs, logger, abortSignal);
     }
   }

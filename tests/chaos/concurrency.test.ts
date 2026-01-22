@@ -24,6 +24,16 @@ describe('Chaos Tests - Concurrency', () => {
         overallTimeoutMs: 10000,
         minSuccessRelays: 1,
         retry: { maxAttempts: 0, backoffMs: 100 },
+        successCriteria: (results) => {
+          const successCount = results.filter((r) => r.status === 'success').length;
+          if (successCount >= 1) {
+            if (successCount === results.length) {
+              return { status: 'success', relays: results };
+            }
+            return { status: 'partial', relays: results };
+          }
+          return { status: 'failed', relays: results };
+        },
       };
       const relays = createMockRelays(
         Array.from({ length: 20 }, (_, i) => `wss://relay${i}.example.com`)
@@ -54,6 +64,16 @@ describe('Chaos Tests - Concurrency', () => {
         overallTimeoutMs: 5000,
         minSuccessRelays: 1,
         retry: { maxAttempts: 0, backoffMs: 100 },
+        successCriteria: (results) => {
+          const successCount = results.filter((r) => r.status === 'success').length;
+          if (successCount >= 1) {
+            if (successCount === results.length) {
+              return { status: 'success', relays: results };
+            }
+            return { status: 'partial', relays: results };
+          }
+          return { status: 'failed', relays: results };
+        },
       };
       const relays = createMockRelays([
         'wss://relay1.example.com',
@@ -81,6 +101,16 @@ describe('Chaos Tests - Concurrency', () => {
         overallTimeoutMs: 5000,
         minSuccessRelays: 1,
         retry: { maxAttempts: 0, backoffMs: 100 },
+        successCriteria: (results) => {
+          const successCount = results.filter((r) => r.status === 'success').length;
+          if (successCount >= 1) {
+            if (successCount === results.length) {
+              return { status: 'success', relays: results };
+            }
+            return { status: 'partial', relays: results };
+          }
+          return { status: 'failed', relays: results };
+        },
       };
       const relays = createMockRelays(
         Array.from({ length: 10 }, (_, i) => `wss://relay${i}.example.com`)

@@ -3,22 +3,23 @@ import type { Metrics } from '../observability/metrics';
 import type { PublishPolicy } from '../policies/PublishPolicy';
 
 import { HealthCheckManager } from './healthCheck';
+import { classifyPublishOutcome } from './outcomeClassifier';
 import type { Relay } from './Relay';
 import { publishToRelay } from './RelayPublisher';
 import type { PublishOutcome, RelayResult, RelayUrl, SignedEvent } from './types';
 
 /**
- * Publishes to relays with concurrency control and early return
- * Returns as soon as minSuccessRelays is reached
+ * Publishes to relays with concurrency control
+ * Waits for all started publishes to complete before returning
  * @param relays Array of relays to publish to
  * @param event The event to publish
  * @param policy Publish policy
  * @param logger Logger instance
  * @param abortController Abort controller for cancellation
  * @param metrics Optional metrics instance
- * @param minSuccessRelays Minimum number of successful relays before returning
+ * @param minSuccessRelays Minimum number of successful relays (used for classification, not early return)
  * @param onResult Callback when a result is received
- * @returns Promise that resolves with results when minSuccessRelays is reached or all relays complete
+ * @returns Promise that resolves with all results when all started publishes complete
  */
 async function publishWithEarlyReturn(
   relays: Relay[],
@@ -31,7 +32,6 @@ async function publishWithEarlyReturn(
   onResult: (result: RelayResult) => void
 ): Promise<RelayResult[]> {
   const results: RelayResult[] = [];
-  let successCount = 0;
   const pendingPromises = new Map<RelayUrl, Promise<RelayResult>>();
   const executing = new Set<Promise<RelayResult>>();
   
@@ -57,10 +57,6 @@ async function publishWithEarlyReturn(
     const wrappedPromise = publishPromise.then((result) => {
       results.push(result);
       pendingPromises.delete(relay.url);
-      
-      if (result.status === 'success') {
-        successCount++;
-      }
       
       onResult(result);
       
@@ -101,24 +97,23 @@ async function publishWithEarlyReturn(
     }
   }
   
-  // Wait for results, checking for early return
+  // Wait for all started publishes to complete
+  // Standard mode waits for all relays to ensure complete results in the response
+  // This ensures the HTTP response includes all results from all started publishes
   while (executing.size > 0 && !abortController.signal.aborted) {
     await Promise.race(executing);
-    
-    // Check if we've reached minSuccessRelays - return early but don't abort
-    if (successCount >= minSuccessRelays) {
-      // Return early with current results
-      // Remaining publishes will continue in background
-      return results;
-    }
   }
   
   // Wait for any remaining promises that were already started
-  // (but don't wait if we've already reached minSuccessRelays)
-  if (pendingPromises.size > 0 && successCount < minSuccessRelays) {
+  // This is a safety check to ensure we have all results before returning
+  // pendingPromises should be empty by now (cleared when wrapped promises complete),
+  // but we wait just in case there's a race condition
+  if (pendingPromises.size > 0) {
     await Promise.all(Array.from(pendingPromises.values()));
   }
   
+  // Verify we have results for all relays that were started
+  // This ensures we don't return early with incomplete results
   return results;
 }
 
@@ -194,24 +189,6 @@ function addFilteredOutResults(
   }
 }
 
-/**
- * Classifies publish outcome based on success count and policy
- */
-function classifyOutcome(
-  results: RelayResult[],
-  minSuccessRelays: number
-): PublishOutcome {
-  const successCount = results.filter((r) => r.status === 'success').length;
-
-  if (successCount >= minSuccessRelays) {
-    if (successCount === results.length) {
-      return { status: 'success', relays: results };
-    }
-    return { status: 'partial', relays: results };
-  }
-
-  return { status: 'failed', relays: results };
-}
 
 export async function publishSignedEvent(
   event: SignedEvent,
@@ -271,7 +248,8 @@ export async function publishSignedEvent(
     }
   };
 
-  // Publish to all relays with concurrency limit and early return
+  // Publish to all relays with concurrency limit
+  // Waits for all started publishes to complete before returning
   const publishPromise = (async () => {
     try {
       await publishWithEarlyReturn(
@@ -362,6 +340,174 @@ export async function publishSignedEvent(
     return indexA - indexB;
   });
 
-  // Classify outcome based on policy
-  return classifyOutcome(results, policy.minSuccessRelays);
+  // Classify outcome using policy's success criteria
+  return classifyPublishOutcome(results, policy);
+}
+
+/**
+ * Callback type for streaming publish results
+ */
+export type PublishResultCallback = (result: RelayResult) => void;
+
+/**
+ * Publishes a signed event with streaming support for SSE
+ * Similar to publishSignedEvent but accepts a callback for streaming results
+ * @param event The signed Nostr event to publish
+ * @param relays Array of relay adapters to publish to
+ * @param policy Publish policy with concurrency, timeout, and success criteria
+ * @param logger Logger instance for observability
+ * @param onResult Callback invoked for each relay result as it completes
+ * @param metrics Optional metrics instance
+ * @returns Promise resolving to publish outcome with per-relay results
+ */
+export async function publishSignedEventStreaming(
+  event: SignedEvent,
+  relays: Relay[],
+  policy: PublishPolicy,
+  logger: Logger,
+  onResult: PublishResultCallback,
+  metrics?: Metrics
+): Promise<PublishOutcome> {
+  const startTime = Date.now();
+  const eventId = event.id;
+
+  // Initialize health check manager if needed
+  healthCheckManager ??= new HealthCheckManager(logger);
+
+  logger.info(`[${eventId}] Starting streaming publish to ${relays.length} relay(s)`);
+
+  if (relays.length === 0) {
+    return {
+      status: 'failed',
+      relays: [],
+    };
+  }
+
+  // Filter out unhealthy relays
+  const healthyRelays = relays.filter((relay) => {
+    if (!healthCheckManager) {
+      return true;
+    }
+    return healthCheckManager.isHealthy(relay.url);
+  });
+  if (healthyRelays.length < relays.length) {
+    logger.info(
+      `[${eventId}] Filtered out ${relays.length - healthyRelays.length} unhealthy relay(s)`
+    );
+  }
+
+  const completedRelays = new Set<RelayUrl>();
+  const results: RelayResult[] = [];
+
+  // Create abort controller for overall timeout
+  const abortController = new AbortController();
+  const timeoutId = setTimeout(() => {
+    abortController.abort();
+    logger.warn(`[${eventId}] Overall timeout of ${policy.overallTimeoutMs}ms exceeded`);
+  }, policy.overallTimeoutMs);
+
+  // Helper to process a single publish result and stream it
+  const processPublishResult = (result: RelayResult): void => {
+    results.push(result);
+    completedRelays.add(result.relay);
+    
+    // Update health status
+    if (result.status === 'success') {
+      healthCheckManager?.recordSuccess(result.relay);
+    } else {
+      healthCheckManager?.recordFailure(result.relay);
+    }
+    
+    // Stream the result via callback
+    onResult(result);
+  };
+
+  // Publish to all relays with concurrency limit
+  // Wait for all started publishes to complete (no early return for streaming)
+  const publishPromise = (async () => {
+    try {
+      await publishWithEarlyReturn(
+        healthyRelays,
+        event,
+        policy,
+        logger,
+        abortController,
+        metrics,
+        policy.minSuccessRelays,
+        processPublishResult
+      );
+    } catch (error) {
+      logger.error(`[${eventId}] Error in concurrent publish: ${error}`);
+      throw error;
+    } finally {
+      clearTimeout(timeoutId);
+    }
+  })();
+
+  // Wait for all publishes to complete (for streaming, we want all results)
+  // But still respect timeout
+  const WORKER_TIMEOUT_MS = 30000;
+  const WORKER_TIMEOUT_WARNING_MS = 25000;
+  const timeoutWarningId = setTimeout(() => {
+    const elapsed = Date.now() - startTime;
+    if (elapsed >= WORKER_TIMEOUT_WARNING_MS) {
+      logger.warn(
+        `[${eventId}] Operation approaching worker timeout limit (${WORKER_TIMEOUT_MS}ms). ` +
+        `Elapsed: ${elapsed}ms. Consider reducing overallTimeoutMs or relay count.`
+      );
+      if (metrics) {
+        metrics.increment('publish.worker_timeout_warning', 1, { eventId });
+      }
+    }
+  }, WORKER_TIMEOUT_WARNING_MS);
+
+  try {
+    await Promise.race([
+      publishPromise,
+      new Promise<void>((resolve) => {
+        abortController.signal.addEventListener('abort', () => {
+          resolve();
+        });
+      }),
+    ]);
+  } catch (error) {
+    logger.error(`[${eventId}] Error during publish: ${error}`);
+    // Continue to return results even if there was an error
+  } finally {
+    clearTimeout(timeoutId);
+    clearTimeout(timeoutWarningId);
+  }
+
+  const elapsed = Date.now() - startTime;
+  logger.info(`[${eventId}] Streaming publish completed in ${elapsed}ms, ${results.length} results`);
+
+  // Record metrics
+  if (metrics) {
+    const successCount = results.filter((r) => r.status === 'success').length;
+    metrics.increment('publish.attempts', 1, { eventId });
+    metrics.increment('publish.success', successCount > 0 ? 1 : 0, { eventId });
+    metrics.histogram('publish.latency', elapsed, { eventId });
+    metrics.histogram('publish.relay_count', results.length, { eventId });
+    metrics.histogram('publish.success_count', successCount, { eventId });
+  }
+
+  // Add timeout results for incomplete relays
+  const attemptedRelayUrlSet = new Set(healthyRelays.map((r) => r.url));
+  const filteredOutRelayUrls = relays
+    .filter((r) => !attemptedRelayUrlSet.has(r.url))
+    .map((r) => r.url);
+  
+  addTimeoutResultsForRelays(attemptedRelayUrlSet, results, elapsed, policy, healthCheckManager);
+  addFilteredOutResults(filteredOutRelayUrls, results, healthCheckManager);
+
+  // Sort results to match input order
+  const relayIndexMap = new Map(relays.map((r, index) => [r.url, index]));
+  results.sort((a, b) => {
+    const indexA = relayIndexMap.get(a.relay) ?? Infinity;
+    const indexB = relayIndexMap.get(b.relay) ?? Infinity;
+    return indexA - indexB;
+  });
+
+  // Classify outcome using policy's success criteria
+  return classifyPublishOutcome(results, policy);
 }

@@ -84,6 +84,17 @@ Publishes a single signed Nostr event to multiple relays.
 }
 ```
 
+**Error (409 Conflict - Replay Protection):**
+```json
+{
+  "error": "Event abc123... has already been published. Replay protection prevents duplicate publishing.",
+  "code": "REPLAY_ERROR",
+  "details": {
+    "eventId": "abc123..."
+  }
+}
+```
+
 **Error (429 Too Many Requests):**
 ```json
 {
@@ -119,6 +130,37 @@ Publishes a single signed Nostr event to multiple relays.
 - **API-TOKEN**: Must match `API_TOKEN` environment variable if set
 - **X-Request-ID / X-Correlation-ID**: Any string value accepted, used for tracing
 
+#### Streaming Mode (SSE)
+
+To enable Server-Sent Events (SSE) streaming, add `?stream=true` to the query string or include `Accept: text/event-stream` header.
+
+**Streaming Response:**
+The response is sent as Server-Sent Events with the following event types:
+- `result`: Individual relay publish result
+- `progress`: Progress update with completion count
+- `complete`: Final outcome with all results
+- `error`: Error event if publishing fails
+
+**Example SSE Response:**
+```
+event: result
+data: {"relay":"wss://relay.damus.io","ok":true,"latencyMs":145}
+
+event: progress
+data: {"completed":1,"total":2,"successCount":1}
+
+event: result
+data: {"relay":"wss://relay.snort.social","ok":true,"latencyMs":203}
+
+event: progress
+data: {"completed":2,"total":2,"successCount":2}
+
+event: complete
+data: {"results":[...],"status":"success"}
+```
+
+**Note:** Replay protection applies to both standard and SSE streaming modes.
+
 #### Limits
 
 - Request size: 1MB maximum
@@ -126,6 +168,7 @@ Publishes a single signed Nostr event to multiple relays.
 - Per-relay timeout: 10s (default policy)
 - Overall timeout: 15s (default policy)
 - Concurrency: 8 concurrent publishes (default policy)
+- Replay protection: 24-hour TTL for event IDs
 
 ---
 
@@ -173,6 +216,8 @@ Publishes multiple events to multiple relays in a single request.
 **Field Descriptions:**
 - `events` (required, array): Array of signed Nostr events. Maximum 200 events per batch.
 - `relays` (required, array): Array of relay WebSocket URLs. Same rules as `/publish`.
+
+**Note:** Replay protection is checked for all events in the batch. If any event is a replay, the entire batch request is rejected with HTTP 409 Conflict.
 
 #### Response
 
@@ -327,6 +372,7 @@ No body required.
 | Code | HTTP Status | Description | Troubleshooting | Retry Recommended |
 |------|-------------|-------------|-----------------|-------------------|
 | `VALIDATION_ERROR` | 400 | Request validation failed | Check request format, required fields, and data types. See error message for specific field issues. | No - fix request first |
+| `REPLAY_ERROR` | 409 | Event has already been published | The event ID has been seen within the last 24 hours. Replay protection prevents duplicate publishing. | No - event already published |
 | `RATE_LIMIT_EXCEEDED` | 429 | Rate limit exceeded | Wait for rate limit window to reset. Check `Retry-After` header for wait time. | Yes - after waiting |
 | `INTERNAL_ERROR` | 500 | Internal server error | Server-side issue. Check worker logs. If persistent, contact support. | Yes - with exponential backoff |
 | `CONFIGURATION_ERROR` | 500 | Server configuration error | Worker misconfigured. Check environment variables and KV bindings. | No - requires admin fix |
@@ -379,6 +425,36 @@ All error responses follow this structure:
 }
 ```
 **Solution**: Include all required fields in request body.
+
+**Replay Protection Error:**
+```json
+{
+  "error": "Event abc123... has already been published. Replay protection prevents duplicate publishing.",
+  "code": "REPLAY_ERROR",
+  "details": {
+    "eventId": "abc123..."
+  }
+}
+```
+**Solution**: The event has already been published within the last 24 hours. Replay protection prevents duplicate publishing to prevent abuse. If you need to republish, wait 24 hours or use a different event ID.
+
+### Replay Protection
+
+The service implements replay protection to prevent duplicate event publishing:
+
+- **TTL**: Event IDs are tracked for 24 hours
+- **Storage**: Uses Cloudflare KV (reuses PROFILES namespace)
+- **Scope**: Applied to standard publish, SSE streaming, and batch requests
+- **Response**: HTTP 409 Conflict for replay attempts
+- **Thread-Safe**: Uses KV atomic operations to handle concurrent requests
+
+**How It Works:**
+1. Before publishing, the service checks if the event ID exists in KV
+2. If found, the request is rejected with HTTP 409 Conflict
+3. If not found, the event ID is recorded with a 24-hour TTL
+4. After 24 hours, the record expires and the event can be published again
+
+**Note**: Replay protection uses a fail-open design. If KV operations fail, publishing continues to prevent blocking all publishing if KV is temporarily unavailable.
 
 ### Rate Limiting
 

@@ -3,6 +3,7 @@ import type { Event } from 'nostr-tools';
 import {
   AppError,
   RelayError,
+  ReplayError,
   TimeoutError,
   ValidationError,
 } from '../../core/errors';
@@ -129,6 +130,12 @@ function buildAppErrorResponse(error: AppError): ErrorResponse {
     }
   }
 
+  if (error instanceof ReplayError) {
+    response.details = {
+      eventId: error.eventId,
+    };
+  }
+
   if (error instanceof RelayError) {
     response.details = {
       relay: error.relay,
@@ -200,6 +207,67 @@ export function createResponseHeaders(
   if (startTime !== undefined) {
     const responseTime = Date.now() - startTime;
     headers.set('X-Response-Time', `${responseTime}ms`);
+  }
+
+  return headers;
+}
+
+/**
+ * SSE event types for streaming publish results
+ */
+export type SSEEventType = 'result' | 'progress' | 'complete' | 'error';
+
+export interface SSEResultEvent {
+  type: 'result';
+  data: RelayPublishResult;
+}
+
+export interface SSEProgressEvent {
+  type: 'progress';
+  data: {
+    completed: number;
+    total: number;
+    successCount: number;
+  };
+}
+
+export interface SSECompleteEvent {
+  type: 'complete';
+  data: {
+    results: RelayPublishResult[];
+    status: 'success' | 'partial' | 'failed';
+  };
+}
+
+export interface SSEErrorEvent {
+  type: 'error';
+  data: ErrorResponse;
+}
+
+export type SSEEvent = SSEResultEvent | SSEProgressEvent | SSECompleteEvent | SSEErrorEvent;
+
+/**
+ * Formats a Server-Sent Event message
+ * @param event The SSE event to format
+ * @returns Formatted SSE message string
+ */
+export function formatSSEMessage(event: SSEEvent): string {
+  const data = JSON.stringify(event.data);
+  return `event: ${event.type}\ndata: ${data}\n\n`;
+}
+
+/**
+ * Creates SSE headers for streaming response
+ */
+export function createSSEHeaders(correlationId?: string): Headers {
+  const headers = new Headers({
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache',
+    'Connection': 'keep-alive',
+  });
+
+  if (correlationId) {
+    headers.set('X-Request-ID', correlationId);
   }
 
   return headers;

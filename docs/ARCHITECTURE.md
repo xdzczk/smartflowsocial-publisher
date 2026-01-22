@@ -54,6 +54,9 @@ graph TB
 - Retry logic with exponential backoff
 - Timeout handling (connection and publish)
 - Circuit breaker integration
+- **State machine orchestration**: Tracks operation lifecycle from idle to success/failure
+- State transitions at each phase: connecting → publishing → success/failure
+- Retry state management integrated with state machine
 
 **ProfileEngine.ts**
 - Profile fetching from relays
@@ -68,6 +71,13 @@ graph TB
 - Nostr event structure validation
 - Signature validation
 - Uses Valibot schemas
+- Type narrowing with `validateAndAssertSigned()`
+- Compile-time type enforcement
+
+**outcomeClassifier.ts**
+- Centralized publish outcome classification
+- Uses policy's success criteria function
+- Consistent outcome classification across all publish modes
 
 **RelayUrl.ts**
 - Relay URL normalization
@@ -86,6 +96,17 @@ graph TB
 - Tracks relay failure rates
 - Opens/closes circuits dynamically
 - Prevents cascading failures
+- **Integrated with state machine** for formal state tracking
+- Circuit state changes update operation state machine
+
+**stateMachine.ts**
+- Formal state machine for relay operations
+- Models lifecycle: idle → connecting → publishing → success/failure
+- Handles retry state transitions: failure → retry_eligible → retry_in_progress
+- Circuit breaker state integration
+- Explicit state transitions with validation
+- State transition history tracking
+- **Integrated throughout**: Circuit breaker, retry logic, and RelayPublisher all use state machine
 
 **healthCheck.ts**
 - Periodic relay health monitoring
@@ -95,6 +116,8 @@ graph TB
 **retry.ts**
 - Exponential backoff implementation
 - Configurable retry attempts
+- **Integrated with state machine** for retry state tracking
+- State transitions: failure → retry_eligible → retry_in_progress → success/failure
 
 **rateLimiter.ts**
 - Sliding window rate limiting
@@ -112,6 +135,12 @@ Configurable behavior objects:
 - **conservativePolicy**: Reliability-focused
 - **aggressivePolicy**: Speed-focused
 - **ProfilePolicy**: Profile-specific settings
+
+**Policy Success Criteria:**
+- Each policy defines a `successCriteria` function
+- Policy encapsulates "what success means"
+- Orchestration uses policy's success criteria (policy-agnostic)
+- Separation of concerns: policy defines criteria, orchestration executes
 
 ### Observability (`src/observability/`)
 
@@ -132,6 +161,14 @@ Configurable behavior objects:
 - Content size limits
 - Tag validation
 - XSS prevention
+- UTF-8 encoding validation
+- HTML entity encoding utilities
+
+**replayProtection.ts**
+- Event ID tracking in KV store
+- 24-hour TTL for replay records
+- Thread-safe replay detection
+- Prevents duplicate event publishing
 
 ### Validation (`src/validation/`)
 
@@ -161,7 +198,12 @@ sequenceDiagram
     Validator->>Handler: Validated Event
     Handler->>Handler: Event Sanitization
     Handler->>Handler: Relay URL Normalization
-    Handler->>PublishEngine: Publish Event
+    Handler->>Handler: Replay Protection Check
+    alt Replay Detected
+        Handler-->>Client: HTTP 409 Conflict
+    else New Event
+        Handler->>PublishEngine: Publish Event
+    end
     PublishEngine->>PublishEngine: Health Check Filtering
     PublishEngine->>RelayPublisher: Publish to Relay 1
     PublishEngine->>RelayPublisher: Publish to Relay 2
@@ -249,6 +291,27 @@ Configurable behavior via policy objects:
 - Different policies for different use cases
 - Query parameter selection
 - Consistent interface across policies
+- **Success Criteria Function**: Each policy defines what "success" means
+- **Policy-Orchestration Separation**: Policy defines criteria, orchestration executes
+- **Centralized Classification**: All outcomes classified via `classifyPublishOutcome()`
+
+### State Machine Pattern
+
+Formal state modeling for relay operations:
+- **Explicit States**: idle, connecting, publishing, success, failure, circuit_open, retry_eligible, retry_in_progress
+- **Validated Transitions**: Only valid state transitions are allowed
+- **Circuit Breaker Integration**: Circuit state affects operation state
+- **Retry State Management**: Formal retry lifecycle with state tracking
+- **Transition History**: All state changes are logged for debugging
+- **Full Integration**: State machine is used throughout:
+  - Circuit breaker tracks circuit state via state machine
+  - Retry logic tracks retry attempts via state machine
+  - RelayPublisher orchestrates entire operation via state machine
+- **Benefits**: 
+  - Explicit state modeling makes behavior predictable
+  - Invalid transitions are prevented at runtime
+  - State history enables better debugging and observability
+  - Clear separation between state management and business logic
 
 ## Concurrency Model
 
@@ -263,6 +326,7 @@ The system uses a concurrency limiter that:
 Structured error hierarchy:
 - `AppError`: Base error class
 - `ValidationError`: Input validation failures
+- `ReplayError`: Replay protection violations (HTTP 409)
 - `RelayError`: Relay-specific errors
 - `TimeoutError`: Timeout scenarios
 - `ConfigurationError`: Configuration issues
@@ -272,7 +336,12 @@ All errors include:
 - HTTP status code
 - Optional field (for validation errors)
 - Optional suggestion
-- Optional details object
+- Optional details object with structured context
+
+**Enhanced Error Context:**
+- ReplayError includes TTL information and replay protection details
+- All errors provide structured context in the `details` field
+- Error messages are more descriptive with actionable suggestions
 
 ## Timeout Strategy
 
@@ -340,15 +409,35 @@ sequenceDiagram
 ### Sanitization
 
 **Content Sanitization:**
-- Content size limits enforced
+- Content size limits enforced (1MB maximum)
+- UTF-8 encoding validation
 - Tag structure validation
 - XSS prevention through proper encoding
 - No script execution in content
+- HTML entity encoding utilities available for rendering contexts
 
 **Tag Validation:**
-- Tags must be arrays of strings
+- Tags must be arrays of strings or numbers
 - Tag structure validated
-- Size limits enforced
+- Size limits enforced (1000 tags max, 100 elements per tag, 1000 chars per element)
+- UTF-8 encoding validation for string elements
+- Helpful error messages with tag indices
+
+### Replay Protection
+
+**Replay Protection System:**
+- Tracks event IDs in Cloudflare KV (reuses PROFILES namespace)
+- 24-hour TTL for automatic cleanup
+- Thread-safe using KV atomic operations
+- Prevents duplicate event publishing (replay attacks)
+- Applied to standard publish, SSE streaming, and batch requests
+- Returns HTTP 409 Conflict for replay attempts
+
+**Implementation Details:**
+- Uses `checkAndRecordEvent()` for atomic check-and-record operations
+- KV key format: `replay:{eventId}`
+- Fail-open design: If KV operations fail, publishing continues (prevents blocking all publishing if KV is down)
+- Race condition handling: Concurrent requests with same event ID are handled gracefully
 
 ### Rate Limiting
 
@@ -390,6 +479,7 @@ sequenceDiagram
 | XSS Attacks | Content sanitization |
 | Relay Spoofing | URL validation and normalization |
 | Cache Poisoning | KV access controls and validation |
+| Replay Attacks | Event ID tracking with 24-hour TTL |
 
 ## Observability
 
@@ -423,6 +513,9 @@ Environment variables control:
 - **Integration Tests**: HTTP handlers
 - **Property Tests**: Validation edge cases
 - **Chaos Tests**: Failure scenarios, timeouts, concurrency
+- **Type Tests**: Compile-time type enforcement verification
+- **State Machine Tests**: State transition validation
+- **Outcome Classification Tests**: Policy success criteria verification
 
 ## Performance Characteristics
 

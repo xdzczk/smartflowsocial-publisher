@@ -13,6 +13,50 @@ export type UnsignedEvent = Event & { __unsigned: true };
 export type SignedEvent = Event & { __signed: true };
 
 /**
+ * Type predicate helper that asserts an event is signed
+ * Throws at runtime if event is not signed, but narrows type at compile time
+ * @param event The event to assert
+ * @throws {Error} if event is not signed
+ */
+export function assertSignedEvent(event: Event): asserts event is SignedEvent {
+  if (
+    !event.sig ||
+    typeof event.sig !== 'string' ||
+    event.sig.length === 0 ||
+    !event.id ||
+    typeof event.id !== 'string' ||
+    event.id.length === 0 ||
+    !event.pubkey ||
+    typeof event.pubkey !== 'string' ||
+    event.pubkey.length === 0
+  ) {
+    throw new Error('Event is not signed: missing or invalid signature, id, or pubkey');
+  }
+}
+
+/**
+ * Type predicate helper that asserts an event is unsigned
+ * Throws at runtime if event is signed, but narrows type at compile time
+ * @param event The event to assert
+ * @throws {Error} if event is signed
+ */
+export function assertUnsignedEvent(event: Event): asserts event is UnsignedEvent {
+  if (
+    event.sig &&
+    typeof event.sig === 'string' &&
+    event.sig.length > 0 &&
+    event.id &&
+    typeof event.id === 'string' &&
+    event.id.length > 0 &&
+    event.pubkey &&
+    typeof event.pubkey === 'string' &&
+    event.pubkey.length > 0
+  ) {
+    throw new Error('Event is signed: cannot treat signed event as unsigned');
+  }
+}
+
+/**
  * Branded type for relay URLs
  * Ensures type safety for relay URL strings
  */
