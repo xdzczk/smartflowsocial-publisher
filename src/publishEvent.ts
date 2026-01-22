@@ -197,41 +197,63 @@ const limitConcurrency = async <T>(
   const results: RelayPublishResult[] = [];
   const executing: Array<Promise<void>> = [];
 
-  console.info(`limitConcurrency: processing ${items.length} items with limit ${limit}`);
+  console.info(`limitConcurrency: START - processing ${items.length} items with limit ${limit}, items:`, items);
+  
+  if (items.length === 0) {
+    console.warn(`limitConcurrency: items array is empty!`);
+    return [];
+  }
   
   for (let i = 0; i < items.length; i++) {
     const item = items[i];
-    console.info(`limitConcurrency: processing item ${i + 1}/${items.length}, executing: ${executing.length}`);
+    console.info(`limitConcurrency: LOOP START - item ${i + 1}/${items.length}, executing: ${executing.length}, item:`, item);
     
     // Wait if we're at the limit
     if (executing.length >= limit) {
-      console.info(`limitConcurrency: at limit, waiting for one to complete`);
+      console.info(`limitConcurrency: at limit ${limit}, waiting for one to complete`);
       await Promise.race(executing);
-      // Note: We don't remove completed promises from the array.
-      // Promise.race works correctly even with already-resolved promises,
-      // and the memory overhead is minimal for small limits.
+      console.info(`limitConcurrency: after race, executing: ${executing.length}`);
     }
 
     // Start the operation
     console.info(`limitConcurrency: calling fn for item ${i + 1}`);
-    const operationPromise = fn(item);
+    let operationPromise: Promise<RelayPublishResult>;
+    try {
+      operationPromise = fn(item);
+      console.info(`limitConcurrency: fn returned promise for item ${i + 1}, type: ${typeof operationPromise}`);
+    } catch (error) {
+      console.error(`limitConcurrency: fn threw synchronously for item ${i + 1}:`, error);
+      // Create a rejected promise to maintain consistency
+      operationPromise = Promise.reject(error);
+    }
+    
     const promise = (async () => {
       try {
         console.info(`limitConcurrency: awaiting result for item ${i + 1}`);
         const result = await operationPromise;
-        console.info(`limitConcurrency: got result for item ${i + 1}:`, result);
+        console.info(`limitConcurrency: got result for item ${i + 1}:`, JSON.stringify(result));
         results.push(result);
+        console.info(`limitConcurrency: result added, results count: ${results.length}`);
       } catch (error) {
-        console.error(`limitConcurrency: error for item ${i + 1}:`, error);
-        // Errors are handled in fn, but we need to catch here too
+        console.error(`limitConcurrency: error awaiting result for item ${i + 1}:`, error);
+        // Create a default error result
+        const errorResult: RelayPublishResult = {
+          relay: String(item),
+          ok: false,
+          latencyMs: 0,
+          error: `ERROR: ${error instanceof Error ? error.message : String(error)}`,
+        };
+        results.push(errorResult);
+        console.info(`limitConcurrency: error result added, results count: ${results.length}`);
       }
     })();
 
     executing.push(promise);
+    console.info(`limitConcurrency: promise added to executing, executing count: ${executing.length}`);
   }
 
   // Wait for all remaining operations
-  console.info(`limitConcurrency: waiting for all ${executing.length} operations to complete`);
+  console.info(`limitConcurrency: END LOOP - waiting for all ${executing.length} operations to complete`);
   await Promise.all(executing);
   console.info(`limitConcurrency: all operations completed, returning ${results.length} results`);
   return results;
