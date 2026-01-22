@@ -11,7 +11,14 @@ import globals from 'globals';
 
 export default [
   {
-    ignores: ['node_modules/**', 'build/**', '.wrangler/**', '*.config.js', '*.config.mjs'],
+    ignores: [
+      'node_modules/**',
+      'build/**',
+      '.wrangler/**',
+      '*.config.js',
+      '*.config.mjs',
+      'vitest.config.ts',
+    ],
   },
   js.configs.recommended,
   {
