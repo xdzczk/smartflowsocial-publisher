@@ -15,7 +15,6 @@ import type { PublishOutcome, RelayResult, RelayUrl, SignedEvent } from './types
 async function limitConcurrency<T, R>(
   items: T[],
   limit: number,
-  // eslint-disable-next-line no-unused-vars
   fn: (item: T) => Promise<R>
 ): Promise<R[]> {
   const results: R[] = [];
@@ -249,6 +248,22 @@ export async function publishSignedEvent(
   })();
 
   // Race between publishing and overall timeout
+  // Also monitor for worker timeout (30s limit, warn at 25s)
+  const WORKER_TIMEOUT_MS = 30000; // Cloudflare Workers hard limit
+  const WORKER_TIMEOUT_WARNING_MS = 25000; // Warn 5s before limit
+  const timeoutWarningId = setTimeout(() => {
+    const elapsed = Date.now() - startTime;
+    if (elapsed >= WORKER_TIMEOUT_WARNING_MS) {
+      logger.warn(
+        `[${eventId}] Operation approaching worker timeout limit (${WORKER_TIMEOUT_MS}ms). ` +
+        `Elapsed: ${elapsed}ms. Consider reducing overallTimeoutMs or relay count.`
+      );
+      if (metrics) {
+        metrics.increment('publish.worker_timeout_warning', 1, { eventId });
+      }
+    }
+  }, WORKER_TIMEOUT_WARNING_MS);
+
   try {
     await Promise.race([
       publishPromise,
@@ -263,6 +278,7 @@ export async function publishSignedEvent(
     // Continue to return results even if there was an error
   } finally {
     clearTimeout(timeoutId);
+    clearTimeout(timeoutWarningId);
   }
 
   const elapsed = Date.now() - startTime;

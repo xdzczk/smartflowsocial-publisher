@@ -179,3 +179,29 @@ export function mapErrorToResponse(error: unknown): {
     status: 500,
   };
 }
+
+/**
+ * Creates standard response headers including request ID and response time
+ * @param correlationId Request correlation ID
+ * @param startTime Request start time in milliseconds
+ * @param additionalHeaders Optional additional headers to include
+ * @returns Headers object with standard headers
+ */
+export function createResponseHeaders(
+  correlationId?: string,
+  startTime?: number,
+  additionalHeaders?: Record<string, string>
+): Headers {
+  const headers = new Headers(additionalHeaders);
+
+  if (correlationId) {
+    headers.set('X-Request-ID', correlationId);
+  }
+
+  if (startTime !== undefined) {
+    const responseTime = Date.now() - startTime;
+    headers.set('X-Response-Time', `${responseTime}ms`);
+  }
+
+  return headers;
+}

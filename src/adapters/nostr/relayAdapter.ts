@@ -46,9 +46,7 @@ class NostrRelayConnection implements RelayConnection {
   subscribe(
     filters: Filter[],
     callbacks: {
-      // eslint-disable-next-line no-unused-vars
       onevent: (event: Event) => void;
-      // eslint-disable-next-line no-unused-vars
       onclose?: (reason: string) => void;
     }
   ): RelaySubscription {

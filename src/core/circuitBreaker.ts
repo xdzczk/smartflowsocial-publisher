@@ -61,12 +61,8 @@ export class CircuitBreaker {
   private lastFailureTime: number | null = null;
 
   constructor(
-    // relayUrl, config, and logger are used in methods below
-    // eslint-disable-next-line no-unused-vars
     private readonly relayUrl: RelayUrl,
-    // eslint-disable-next-line no-unused-vars
     private readonly config: CircuitBreakerConfig,
-    // eslint-disable-next-line no-unused-vars
     private readonly logger: Logger
   ) {}
 
@@ -178,10 +174,7 @@ export class CircuitBreakerManager {
   private breakers = new Map<RelayUrl, CircuitBreaker>();
 
   constructor(
-    // config and logger are used in getBreaker method
-    // eslint-disable-next-line no-unused-vars
     private readonly config: CircuitBreakerConfig,
-    // eslint-disable-next-line no-unused-vars
     private readonly logger: Logger
   ) {}
 

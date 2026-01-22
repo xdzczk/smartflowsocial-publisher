@@ -81,7 +81,6 @@ export class MockRelayConnection implements RelayConnection {
     this.connected = true;
   }
 
-  // eslint-disable-next-line no-unused-vars
   async publish(_event: Event): Promise<void> {
     if (!this.connected) {
       throw new Error('Not connected');
@@ -98,9 +97,7 @@ export class MockRelayConnection implements RelayConnection {
      
     _filters: Filter[],
     callbacks: {
-      // eslint-disable-next-line no-unused-vars
       onevent: (_event: Event) => void;
-      // eslint-disable-next-line no-unused-vars
       onclose?: (_reason: string) => void;
     }
   ): RelaySubscription {

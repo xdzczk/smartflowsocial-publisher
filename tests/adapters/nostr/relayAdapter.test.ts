@@ -17,7 +17,6 @@ vi.mock('nostr-tools', () => {
       this.connected = true;
     }
 
-    // eslint-disable-next-line no-unused-vars
     async publish(_event: Event): Promise<string> {
       if (!this.connected) {
         throw new Error('Not connected');
@@ -26,13 +25,9 @@ vi.mock('nostr-tools', () => {
     }
 
     subscribe(
-      // eslint-disable-next-line no-unused-vars
       _filters: Filter[],
-      // eslint-disable-next-line no-unused-vars
       _callbacks?: {
-        // eslint-disable-next-line no-unused-vars
         onevent?: (_event: Event) => void;
-        // eslint-disable-next-line no-unused-vars
         onclose?: (_reason: string) => void;
       }
     ) {

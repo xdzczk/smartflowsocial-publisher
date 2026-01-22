@@ -48,7 +48,6 @@ export async function waitFor(
 /**
  * Advances fake timers by the specified milliseconds
  */
-// eslint-disable-next-line no-unused-vars
 export function advanceTimers(_ms: number): void {
   // This will be used with vi.advanceTimersByTime
   // The actual implementation depends on Vitest's fake timers

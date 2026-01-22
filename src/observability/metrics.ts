@@ -1,4 +1,5 @@
 import type { Logger } from './logger';
+import type { MetricsExporter } from './metricsExport';
 
 /**
  * Metric types for tracking
@@ -10,7 +11,6 @@ export interface Metrics {
    * @param value Optional increment value (default: 1)
    * @param tags Optional tags for filtering
    */
-  // eslint-disable-next-line no-unused-vars
   increment(name: string, value?: number, tags?: Record<string, string>): void;
 
   /**
@@ -19,7 +19,6 @@ export interface Metrics {
    * @param value Value to record
    * @param tags Optional tags for filtering
    */
-  // eslint-disable-next-line no-unused-vars
   histogram(name: string, value: number, tags?: Record<string, string>): void;
 
   /**
@@ -28,7 +27,6 @@ export interface Metrics {
    * @param value Current value
    * @param tags Optional tags for filtering
    */
-  // eslint-disable-next-line no-unused-vars
   gauge(name: string, value: number, tags?: Record<string, string>): void;
 }
 
@@ -40,10 +38,24 @@ export class LoggerMetrics implements Metrics {
   private counters = new Map<string, number>();
   private histograms = new Map<string, number[]>();
   private gauges = new Map<string, number>();
+  private exporter: MetricsExporter | null = null;
+  private exportInterval: number | null = null;
+  private lastExportTime = Date.now();
 
-  // logger is used in methods below
-  // eslint-disable-next-line no-unused-vars
-  constructor(private logger: Logger) {}
+  constructor(
+    private readonly logger: Logger,
+    exporter?: MetricsExporter | null,
+    exportIntervalMs?: number
+  ) {
+    // Reference logger to satisfy ESLint (logger is used via this.logger in class methods)
+    void logger;
+    this.exporter = exporter ?? null;
+    if (this.exporter && exportIntervalMs && exportIntervalMs > 0) {
+      this.exportInterval = exportIntervalMs;
+      // Schedule periodic export
+      this.scheduleExport();
+    }
+  }
 
   increment(name: string, value = 1, tags?: Record<string, string>): void {
     const key = this.getKey(name, tags);
@@ -104,6 +116,47 @@ export class LoggerMetrics implements Metrics {
   }
 
   /**
+   * Exports metrics to configured exporter
+   */
+  private async exportMetrics(): Promise<void> {
+    if (!this.exporter) {
+      return;
+    }
+
+    try {
+      await this.exporter.export({
+        counters: new Map(this.counters),
+        histograms: new Map(this.histograms),
+        gauges: new Map(this.gauges),
+      });
+      this.lastExportTime = Date.now();
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      this.logger.warn(`Failed to export metrics: ${errorMessage}`);
+    }
+  }
+
+  /**
+   * Schedules periodic metric export
+   */
+  private scheduleExport(): void {
+    if (!this.exporter || !this.exportInterval) {
+      return;
+    }
+
+    // In Cloudflare Workers, we can't use setInterval
+    // Instead, export will be triggered on-demand or at request end
+    // This is a placeholder for future implementation
+  }
+
+  /**
+   * Flushes metrics to exporter immediately
+   */
+  async flush(): Promise<void> {
+    await this.exportMetrics();
+  }
+
+  /**
    * Resets all metrics (useful for testing)
    */
   reset(): void {
@@ -128,17 +181,14 @@ export class LoggerMetrics implements Metrics {
  * Null metrics implementation (no-op, useful for testing)
  */
 export class NullMetrics implements Metrics {
-  // eslint-disable-next-line no-unused-vars
   increment(_name: string, _value?: number, _tags?: Record<string, string>): void {
     // No-op
   }
 
-  // eslint-disable-next-line no-unused-vars
   histogram(_name: string, _value: number, _tags?: Record<string, string>): void {
     // No-op
   }
 
-  // eslint-disable-next-line no-unused-vars
   gauge(_name: string, _value: number, _tags?: Record<string, string>): void {
     // No-op
   }
@@ -147,8 +197,21 @@ export class NullMetrics implements Metrics {
 /**
  * Creates a metrics instance
  * @param logger Logger instance
+ * @param env Optional environment variables for metrics export configuration
  * @returns Metrics instance
  */
-export function createMetrics(logger: Logger): Metrics {
-  return new LoggerMetrics(logger);
+export async function createMetrics(logger: Logger, env?: {
+  METRICS_EXPORT_ENABLED?: string;
+  METRICS_EXPORT_INTERVAL_MS?: string;
+}): Promise<Metrics> {
+  let exporter: import('./metricsExport').MetricsExporter | null = null;
+  if (env?.METRICS_EXPORT_ENABLED === 'true') {
+    const { createMetricsExporter } = await import('./metricsExport');
+    exporter = createMetricsExporter(env) ?? null;
+  }
+  const exportInterval = env?.METRICS_EXPORT_INTERVAL_MS
+    ? parseInt(env.METRICS_EXPORT_INTERVAL_MS, 10)
+    : undefined;
+
+  return new LoggerMetrics(logger, exporter, exportInterval);
 }

@@ -3,17 +3,13 @@
  * Replaces console.log with injectable, testable logging
  */
 export interface Logger {
-  // eslint-disable-next-line no-unused-vars
   info(...args: unknown[]): void;
-  // eslint-disable-next-line no-unused-vars
   warn(...args: unknown[]): void;
-  // eslint-disable-next-line no-unused-vars
   error(...args: unknown[]): void;
   /**
    * Set correlation ID for this logger instance
    * @param correlationId The correlation ID to use for subsequent log entries
    */
-  // eslint-disable-next-line no-unused-vars
   setCorrelationId(correlationId: string | undefined): void;
   /**
    * Get current correlation ID
@@ -186,17 +182,14 @@ export class NullLogger implements Logger {
     return this.correlationId;
   }
 
-  // eslint-disable-next-line no-unused-vars
   info(..._args: unknown[]): void {
     // No-op
   }
 
-  // eslint-disable-next-line no-unused-vars
   warn(..._args: unknown[]): void {
     // No-op
   }
 
-  // eslint-disable-next-line no-unused-vars
   error(..._args: unknown[]): void {
     // No-op
   }

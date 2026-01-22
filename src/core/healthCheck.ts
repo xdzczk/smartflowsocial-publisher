@@ -20,8 +20,6 @@ export interface RelayHealth {
 export class HealthCheckManager {
   private healthStatus = new Map<RelayUrl, RelayHealth>();
 
-  // logger is used in methods below
-  // eslint-disable-next-line no-unused-vars
   constructor(private readonly logger: Logger) {}
 
   /**

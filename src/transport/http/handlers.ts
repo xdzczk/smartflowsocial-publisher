@@ -18,6 +18,7 @@ import type { Env } from '../../types';
 import { validateProfileRequest } from '../../validation/schemas';
 
 import {
+  createResponseHeaders,
   mapErrorToResponse,
   mapPublishOutcomeToResponse,
   parsePublishRequest,
@@ -25,15 +26,15 @@ import {
 
 const HOUR = 60 * 60;
 const MAX_REQUEST_SIZE = 1024 * 1024; // 1MB
+const MAX_BATCH_REQUEST_SIZE = 10 * 1024 * 1024; // 10MB for batch requests
+const MAX_BATCH_EVENTS = 200; // Maximum events per batch request
 const INVALID_JSON_MSG = 'Invalid JSON in request body';
 const REQUEST_TOO_LARGE_MSG = 'Request body too large:';
 const ENDPOINT_PUBLISH = 'publish';
 const STATUS_200 = '200';
 const STATUS_500 = '500';
 const CONTENT_TYPE_JSON = 'application/json';
-const HEADER_CONTENT_LENGTH = 'Content-Length';
 const HTTP_STATUS_OK = 200;
-const PARSE_INT_RADIX = 10;
 const METRIC_HTTP_REQUESTS = 'http.requests';
 const METRIC_HTTP_RESPONSES = 'http.responses';
 const METRIC_INCREMENT_VALUE = 1;
@@ -95,37 +96,38 @@ function selectPolicy(queryParams: URLSearchParams) {
  */
 export async function publishHandler(
   request: Request,
-  _env: Env,
+  env: Env,
   _ctx: ExecutionContext,
   correlationId?: string
 ): Promise<Response> {
   // Parameters kept for API compatibility
-  void _env;
   void _ctx;
+  const startTime = Date.now();
   const logger = new ConsoleLogger();
   if (correlationId) {
     logger.setCorrelationId(correlationId);
   }
-  const metrics = createMetrics(logger);
+  const metrics = await createMetrics(logger, env);
 
   try {
     metrics.increment(METRIC_HTTP_REQUESTS, METRIC_INCREMENT_VALUE, { endpoint: ENDPOINT_PUBLISH });
-    // Check request size
-    const contentLength = request.headers.get(HEADER_CONTENT_LENGTH);
-    if (contentLength) {
-      const size = parseInt(contentLength, PARSE_INT_RADIX);
-      if (size > MAX_REQUEST_SIZE) {
-        throw new ValidationError(
-          `${REQUEST_TOO_LARGE_MSG} ${size} bytes (max: ${MAX_REQUEST_SIZE} bytes)`,
-          'body'
-        );
-      }
+    
+    // Validate request size and read body
+    const sizeCheck = await validateAndReadRequestBody(request, MAX_REQUEST_SIZE);
+    if (!sizeCheck.success) {
+      const headers = createResponseHeaders(correlationId, startTime, {
+        'Content-Type': CONTENT_TYPE_JSON,
+      });
+      return new Response(sizeCheck.response.body, {
+        status: sizeCheck.response.status,
+        headers,
+      });
     }
 
-    // Parse request body
+    // Parse request body from validated text
     let body: unknown;
     try {
-      body = await request.json();
+      body = JSON.parse(sizeCheck.bodyText);
     } catch (error) {
       if (error instanceof SyntaxError) {
         throw new ValidationError(
@@ -161,9 +163,13 @@ export async function publishHandler(
 
     metrics.increment(METRIC_HTTP_RESPONSES, METRIC_INCREMENT_VALUE, { endpoint: ENDPOINT_PUBLISH, status: STATUS_200 });
 
+    const headers = createResponseHeaders(correlationId, startTime, {
+      'Content-Type': CONTENT_TYPE_JSON,
+    });
+
     return new Response(JSON.stringify(response), {
       status: 200,
-      headers: { 'Content-Type': CONTENT_TYPE_JSON },
+      headers,
     });
   } catch (error) {
     logger.error('Error in publishHandler:', error);
@@ -177,9 +183,12 @@ export async function publishHandler(
       status: String(status),
       error: response.code ?? 'unknown',
     });
+    const headers = createResponseHeaders(correlationId, startTime, {
+      'Content-Type': CONTENT_TYPE_JSON,
+    });
     return new Response(JSON.stringify(response), {
       status,
-      headers: { 'Content-Type': CONTENT_TYPE_JSON },
+      headers,
     });
   }
 }
@@ -193,67 +202,111 @@ export async function publishHandler(
  * @returns HTTP response with profile data or 202 Accepted
  */
 /**
- * Validates request size
+ * Validates request size by reading body as text
+ * This is more reliable than Content-Length header which can be spoofed
  * @param request The HTTP request
- * @returns Error response if too large, null otherwise
+ * @param maxSize Maximum allowed size in bytes
+ * @returns Object with body text if valid, or error response
  */
-function validateRequestSize(request: Request): Response | null {
-  const contentLength = request.headers.get('Content-Length');
-  if (!contentLength) {
-    return null;
-  }
+async function validateAndReadRequestBody(
+  request: Request,
+  maxSize: number
+): Promise<
+  | { success: true; bodyText: string }
+  | { success: false; response: Response }
+> {
+  // Clone request to read body without consuming original
+  const clonedRequest = request.clone();
+  const bodyText = await clonedRequest.text();
+  const size = new TextEncoder().encode(bodyText).length;
 
-  const size = parseInt(contentLength, 10);
-  if (size > MAX_REQUEST_SIZE) {
-      return new Response(
+  if (size > maxSize) {
+    return {
+      success: false,
+      response: new Response(
         JSON.stringify({
-          error: `${REQUEST_TOO_LARGE_MSG} ${size} bytes (max: ${MAX_REQUEST_SIZE} bytes)`,
+          error: `${REQUEST_TOO_LARGE_MSG} ${size} bytes (max: ${maxSize} bytes)`,
           code: 'VALIDATION_ERROR',
           field: 'body',
         }),
-      {
-        status: 400,
-        headers: { 'Content-Type': CONTENT_TYPE_JSON },
-      }
-    );
+        {
+          status: 400,
+          headers: { 'Content-Type': CONTENT_TYPE_JSON },
+        }
+      ),
+    };
   }
 
-  return null;
+  return { success: true, bodyText };
 }
 
 /**
- * Parses request body with error handling
- * @param request The HTTP request
- * @returns Parsed body or error response
+ * Validates and normalizes profile request
+ * Extracted to reduce cognitive complexity
  */
-async function parseRequestBody(request: Request): Promise<
-  | { success: true; body: unknown }
+async function validateAndNormalizeProfileRequest(
+  body: unknown,
+  correlationId: string | undefined,
+  startTime: number
+): Promise<
+  | { success: true; relayUrls: string[]; normalizedPubkey: string }
   | { success: false; response: Response }
 > {
+  // Validate profile request using Valibot
+  let validatedRequest: { relays: string[]; pubkey: string };
   try {
-    const body = await request.json();
-    return { success: true, body };
+    validatedRequest = validateProfileRequest(body);
   } catch (error) {
-    if (error instanceof SyntaxError) {
-      return {
-        success: false,
-        response: new Response(
-          JSON.stringify({
-            error: INVALID_JSON_MSG,
-            code: 'VALIDATION_ERROR',
-            field: 'body',
-            details: { originalError: error.message },
-          }),
-          {
-            status: 400,
-            headers: { 'Content-Type': CONTENT_TYPE_JSON },
-          }
-        ),
-      };
-    }
-    throw error;
+    const { response, status } = mapErrorToResponse(
+      error instanceof ValidationError
+        ? error
+        : new ValidationError('Invalid request', 'body')
+    );
+    const headers = createResponseHeaders(correlationId, startTime, {
+      'Content-Type': CONTENT_TYPE_JSON,
+    });
+    return {
+      success: false,
+      response: new Response(JSON.stringify(response), { status, headers }),
+    };
   }
+
+  const relayUrls = normalizeRelayUrls(validatedRequest.relays);
+  const pubkey = validatedRequest.pubkey;
+
+  if (relayUrls.length === 0 || !pubkey) {
+    const { response, status } = mapErrorToResponse(
+      new ValidationError('No valid relays or missing pubkey', 'body')
+    );
+    const headers = createResponseHeaders(correlationId, startTime, {
+      'Content-Type': CONTENT_TYPE_JSON,
+    });
+    return {
+      success: false,
+      response: new Response(JSON.stringify(response), { status, headers }),
+    };
+  }
+
+  // Normalize pubkey (handle bech32)
+  const { normalizeToHex } = await import('../../utils');
+  const normalizedPubkey = normalizeToHex(pubkey);
+
+  if (!normalizedPubkey) {
+    const { response, status } = mapErrorToResponse(
+      new ValidationError('Invalid pubkey format', 'pubkey')
+    );
+    const headers = createResponseHeaders(correlationId, startTime, {
+      'Content-Type': CONTENT_TYPE_JSON,
+    });
+    return {
+      success: false,
+      response: new Response(JSON.stringify(response), { status, headers }),
+    };
+  }
+
+  return { success: true, relayUrls, normalizedPubkey };
 }
+
 
 export async function profileHandler(
   request: Request,
@@ -261,76 +314,57 @@ export async function profileHandler(
   ctx: ExecutionContext,
   correlationId?: string
 ): Promise<Response> {
+  const startTime = Date.now();
   const logger = new ConsoleLogger();
   if (correlationId) {
     logger.setCorrelationId(correlationId);
   }
-  const metrics = createMetrics(logger);
+  const metrics = await createMetrics(logger, env);
 
   try {
     metrics.increment('http.requests', 1, { endpoint: 'profile' });
-    // Check request size
-    const sizeError = validateRequestSize(request);
-    if (sizeError) {
-      return sizeError;
+    
+    // Validate request size and read body
+    const sizeCheck = await validateAndReadRequestBody(request, MAX_REQUEST_SIZE);
+    if (!sizeCheck.success) {
+      const headers = createResponseHeaders(correlationId, startTime, {
+        'Content-Type': CONTENT_TYPE_JSON,
+      });
+      return new Response(sizeCheck.response.body, {
+        status: sizeCheck.response.status,
+        headers,
+      });
     }
 
-    // Parse request body
-    const parseResult = await parseRequestBody(request);
-    if (!parseResult.success) {
-      return parseResult.response;
-    }
-
-    const body = parseResult.body;
-
-    // Validate profile request using Valibot
-    let validatedRequest: { relays: string[]; pubkey: string };
+    // Parse request body from validated text
+    let body: unknown;
     try {
-      validatedRequest = validateProfileRequest(body);
+      body = JSON.parse(sizeCheck.bodyText);
     } catch (error) {
-      if (error instanceof ValidationError) {
-        const { response, status } = mapErrorToResponse(error);
+      if (error instanceof SyntaxError) {
+        const { response, status } = mapErrorToResponse(
+          new ValidationError(INVALID_JSON_MSG, 'body', {
+            originalError: error instanceof Error ? error.message : String(error),
+          })
+        );
+        const headers = createResponseHeaders(correlationId, startTime, {
+          'Content-Type': CONTENT_TYPE_JSON,
+        });
         return new Response(JSON.stringify(response), {
           status,
-          headers: { 'Content-Type': CONTENT_TYPE_JSON },
+          headers,
         });
       }
-      return new Response(JSON.stringify({
-        error: 'Invalid request',
-        code: 'VALIDATION_ERROR',
-      }), {
-        status: 400,
-        headers: { 'Content-Type': CONTENT_TYPE_JSON },
-      });
+      throw error;
     }
 
-    const relayUrls = normalizeRelayUrls(validatedRequest.relays);
-    const pubkey = validatedRequest.pubkey;
-
-    if (relayUrls.length === 0 || !pubkey) {
-      return new Response(JSON.stringify({
-        error: 'No valid relays or missing pubkey',
-        code: 'VALIDATION_ERROR',
-      }), {
-        status: 400,
-        headers: { 'Content-Type': CONTENT_TYPE_JSON },
-      });
+    // Validate and normalize profile request
+    const validationResult = await validateAndNormalizeProfileRequest(body, correlationId, startTime);
+    if (!validationResult.success) {
+      return validationResult.response;
     }
 
-    // Normalize pubkey (handle bech32)
-    // Import normalizeToHex from utils (will be moved later)
-    const { normalizeToHex } = await import('../../utils');
-    const normalizedPubkey = normalizeToHex(pubkey);
-
-    if (!normalizedPubkey) {
-      return new Response(JSON.stringify({
-        error: 'Invalid pubkey format',
-        code: 'VALIDATION_ERROR',
-      }), {
-        status: 400,
-        headers: { 'Content-Type': CONTENT_TYPE_JSON },
-      });
-    }
+    const { relayUrls, normalizedPubkey } = validationResult;
 
     // Cache functions
     const getCache = async (key: string): Promise<{
@@ -351,11 +385,12 @@ export async function profileHandler(
       }
 
       metrics.increment(METRIC_HTTP_RESPONSES, METRIC_INCREMENT_VALUE, { endpoint: 'profile', status: STATUS_200, cached: 'true' });
+      const headers = createResponseHeaders(correlationId, startTime, {
+        'content-type': 'application/json;charset=UTF-8',
+      });
       return new Response(value, {
         status: HTTP_STATUS_OK,
-        headers: {
-          'content-type': 'application/json;charset=UTF-8',
-        },
+        headers,
       });
     }
 
@@ -363,24 +398,26 @@ export async function profileHandler(
     ctx.waitUntil(refreshProfileCache(normalizedPubkey, relayUrls, env, logger));
 
     metrics.increment(METRIC_HTTP_RESPONSES, METRIC_INCREMENT_VALUE, { endpoint: 'profile', status: '202', cached: 'false' });
+    const headers = createResponseHeaders(correlationId, startTime, {
+      'content-type': 'application/json;charset=UTF-8',
+    });
     return new Response(null, {
       status: 202,
-      headers: {
-        'content-type': 'application/json;charset=UTF-8',
-      },
+      headers,
     });
   } catch (error) {
     logger.error('Error in profileHandler:', error);
-    const errorResponse: { error: string; correlationId?: string } = {
-      error: 'Internal Server Error',
-    };
+    const { response, status } = mapErrorToResponse(error);
     if (correlationId) {
-      errorResponse.correlationId = correlationId;
+      response.details = { ...response.details, correlationId };
     }
     metrics.increment(METRIC_HTTP_RESPONSES, METRIC_INCREMENT_VALUE, { endpoint: 'profile', status: STATUS_500 });
-    return new Response(JSON.stringify(errorResponse), {
-      status: 500,
-      headers: { 'Content-Type': CONTENT_TYPE_JSON },
+    const headers = createResponseHeaders(correlationId, startTime, {
+      'Content-Type': CONTENT_TYPE_JSON,
+    });
+    return new Response(JSON.stringify(response), {
+      status,
+      headers,
     });
   }
 }
@@ -402,11 +439,25 @@ function validateBatchRequest(body: unknown): { events: unknown[]; relays: strin
       'body'
     );
   }
+
+  const events = (body as { events: unknown[] }).events;
+  if (events.length > MAX_BATCH_EVENTS) {
+    throw new ValidationError(
+      `Maximum ${MAX_BATCH_EVENTS} events per batch request, received ${events.length}`,
+      'events'
+    );
+  }
+
+  if (events.length === 0) {
+    throw new ValidationError('Batch request must contain at least one event', 'events');
+  }
+
   return body as { events: unknown[]; relays: string[] };
 }
 
 /**
  * Validates all events in batch
+ * Note: Batch size limit is checked in validateBatchRequest
  */
 async function validateBatchEvents(events: unknown[]): Promise<SignedEvent[]> {
   const { validateSignedEventSchema } = await import('../../validation/schemas');
@@ -425,10 +476,6 @@ async function validateBatchEvents(events: unknown[]): Promise<SignedEvent[]> {
     }
   }
 
-  if (signedEvents.length === 0) {
-    throw new ValidationError('Batch request must contain at least one event', 'events');
-  }
-
   return signedEvents;
 }
 
@@ -442,44 +489,43 @@ async function validateBatchEvents(events: unknown[]): Promise<SignedEvent[]> {
  */
 export async function batchPublishHandler(
   request: Request,
-  _env: Env,
+  env: Env,
   _ctx: ExecutionContext,
   correlationId?: string
 ): Promise<Response> {
-  void _env;
   void _ctx;
+  const startTime = Date.now();
   const logger = new ConsoleLogger();
   if (correlationId) {
     logger.setCorrelationId(correlationId);
   }
-  const metrics = createMetrics(logger);
+  const metrics = await createMetrics(logger, env);
 
   try {
     metrics.increment(METRIC_HTTP_REQUESTS, METRIC_INCREMENT_VALUE, { endpoint: 'batch' });
 
-    // Check request size
-    const contentLength = request.headers.get(HEADER_CONTENT_LENGTH);
-    if (contentLength) {
-      const size = parseInt(contentLength, PARSE_INT_RADIX);
-      if (size > MAX_REQUEST_SIZE * 10) {
-        // Allow 10x size for batch requests
-        throw new ValidationError(
-          `${REQUEST_TOO_LARGE_MSG} ${size} bytes (max: ${MAX_REQUEST_SIZE * 10} bytes)`,
-          'body'
-        );
-      }
+    // Validate request size and read body (10MB limit for batch)
+    const sizeCheck = await validateAndReadRequestBody(request, MAX_BATCH_REQUEST_SIZE);
+    if (!sizeCheck.success) {
+      const headers = createResponseHeaders(correlationId, startTime, {
+        'Content-Type': CONTENT_TYPE_JSON,
+      });
+      return new Response(sizeCheck.response.body, {
+        status: sizeCheck.response.status,
+        headers,
+      });
     }
 
-    // Parse request body
+    // Parse request body from validated text
     let body: unknown;
     try {
-      body = await request.json();
+      body = JSON.parse(sizeCheck.bodyText);
     } catch (error) {
       if (error instanceof SyntaxError) {
         throw new ValidationError(
           INVALID_JSON_MSG,
           'body',
-          { originalError: error.message }
+          { originalError: error instanceof Error ? error.message : String(error) }
         );
       }
       throw error;
@@ -509,9 +555,13 @@ export async function batchPublishHandler(
 
     metrics.increment(METRIC_HTTP_RESPONSES, METRIC_INCREMENT_VALUE, { endpoint: 'batch', status: STATUS_200 });
 
+    const headers = createResponseHeaders(correlationId, startTime, {
+      'Content-Type': CONTENT_TYPE_JSON,
+    });
+
     return new Response(JSON.stringify(batchResult), {
       status: 200,
-      headers: { 'Content-Type': CONTENT_TYPE_JSON },
+      headers,
     });
   } catch (error) {
     logger.error('Error in batchPublishHandler:', error);
@@ -524,9 +574,12 @@ export async function batchPublishHandler(
       status: String(status),
       error: response.code ?? 'unknown',
     });
+    const headers = createResponseHeaders(correlationId, startTime, {
+      'Content-Type': CONTENT_TYPE_JSON,
+    });
     return new Response(JSON.stringify(response), {
       status,
-      headers: { 'Content-Type': CONTENT_TYPE_JSON },
+      headers,
     });
   }
 }

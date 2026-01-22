@@ -29,7 +29,6 @@ export interface RelayConnection {
    * @returns Promise that resolves when event is published
    * @throws Error if publish fails
    */
-  // eslint-disable-next-line no-unused-vars
   publish(event: Event): Promise<void>;
 
   /**
@@ -39,13 +38,9 @@ export interface RelayConnection {
    * @returns Subscription that can be closed
    */
   subscribe(
-    // eslint-disable-next-line no-unused-vars
     filters: Filter[],
-    // eslint-disable-next-line no-unused-vars
     callbacks: {
-      // eslint-disable-next-line no-unused-vars
       onevent: (event: Event) => void;
-      // eslint-disable-next-line no-unused-vars
       onclose?: (reason: string) => void;
     }
   ): RelaySubscription;

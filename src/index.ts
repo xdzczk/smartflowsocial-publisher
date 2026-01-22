@@ -1,5 +1,7 @@
 import type { ExecutionContext, ExportedHandler } from '@cloudflare/workers-types';
 
+import { validateEnvironment } from './config/env';
+import { addCorsHeaders, getCorsConfig, handleCorsPreflight } from './middleware/cors';
 import { RateLimiter } from './middleware/rateLimiter';
 import { ConsoleLogger } from './observability/logger';
 import {
@@ -9,7 +11,6 @@ import {
 } from './transport/http/handlers';
 import type { Env } from './types';
 
-const INTERNAL_SERVER_ERROR_MSG = 'Internal Server Error';
 
 /**
  * Extracts correlation ID from request headers or generates a new one
@@ -80,10 +81,15 @@ function checkRateLimit(
 /**
  * Handles health check endpoint
  */
-async function handleHealthCheck(logger: ConsoleLogger): Promise<Response> {
+async function handleHealthCheck(logger: ConsoleLogger, correlationId?: string): Promise<Response> {
   const { HealthCheckManager } = await import('./core/healthCheck');
   const healthManager = new HealthCheckManager(logger);
   const allHealth = healthManager.getAllHealth();
+
+  const healthResponseHeaders = new Headers({ 'Content-Type': 'application/json' });
+  if (correlationId) {
+    healthResponseHeaders.set('X-Request-ID', correlationId);
+  }
 
   return new Response(
     JSON.stringify({
@@ -98,7 +104,7 @@ async function handleHealthCheck(logger: ConsoleLogger): Promise<Response> {
     }),
     {
       status: 200,
-      headers: { 'Content-Type': 'application/json' },
+      headers: healthResponseHeaders,
     }
   );
 }
@@ -106,6 +112,22 @@ async function handleHealthCheck(logger: ConsoleLogger): Promise<Response> {
 /**
  * Routes request to appropriate handler
  */
+/**
+ * Creates error response with standard headers
+ */
+async function createErrorResponse(
+  error: unknown,
+  correlationId: string,
+  startTime: number
+): Promise<Response> {
+  const { createResponseHeaders, mapErrorToResponse } = await import('./transport/http/mappers');
+  const { response, status } = mapErrorToResponse(error);
+  const headers = createResponseHeaders(correlationId, startTime, {
+    'Content-Type': 'application/json',
+  });
+  return new Response(JSON.stringify(response), { status, headers });
+}
+
 async function routeRequest(
   pathname: string,
   request: Request,
@@ -114,12 +136,14 @@ async function routeRequest(
   correlationId: string,
   logger: ConsoleLogger
 ): Promise<Response> {
+  const startTime = Date.now();
+
   if (pathname === '/' || pathname === '/publish') {
     try {
       return await publishHandler(request, env, ctx, correlationId);
     } catch (e) {
       logger.error('Error in publishHandler:', e);
-      return new Response(INTERNAL_SERVER_ERROR_MSG, { status: 500 });
+      return await createErrorResponse(e, correlationId, startTime);
     }
   }
 
@@ -128,7 +152,7 @@ async function routeRequest(
       return await profileHandler(request, env, ctx, correlationId);
     } catch (e) {
       logger.error('Error in profileHandler:', e);
-      return new Response(INTERNAL_SERVER_ERROR_MSG, { status: 500 });
+      return await createErrorResponse(e, correlationId, startTime);
     }
   }
 
@@ -137,11 +161,13 @@ async function routeRequest(
       return await batchPublishHandler(request, env, ctx, correlationId);
     } catch (e) {
       logger.error('Error in batchPublishHandler:', e);
-      return new Response(INTERNAL_SERVER_ERROR_MSG, { status: 500 });
+      return await createErrorResponse(e, correlationId, startTime);
     }
   }
 
-  return new Response('Endpoint does not exist', { status: 404 });
+  const { createResponseHeaders } = await import('./transport/http/mappers');
+  const headers = createResponseHeaders(correlationId, startTime);
+  return new Response('Endpoint does not exist', { status: 404, headers });
 }
 
 const handler: ExportedHandler<Env> = {
@@ -150,32 +176,62 @@ const handler: ExportedHandler<Env> = {
     const correlationId = extractCorrelationId(request);
     logger.setCorrelationId(correlationId);
 
+    // Validate environment on first request (lazy initialization)
+    // In production, this would be done at worker startup, but Workers don't have a startup hook
+    try {
+      validateEnvironment(env, logger);
+    } catch (error) {
+      logger.error('Environment validation failed:', error);
+      return new Response(
+        JSON.stringify({
+          error: 'Server configuration error',
+          code: 'CONFIGURATION_ERROR',
+          details: { message: error instanceof Error ? error.message : String(error) },
+        }),
+        {
+          status: 500,
+          headers: { 'Content-Type': 'application/json' },
+        }
+      );
+    }
+
     const pathname = new URL(request.url).pathname;
+    const corsConfig = getCorsConfig(env);
+
+    // Handle CORS preflight
+    const corsPreflight = handleCorsPreflight(request, corsConfig);
+    if (corsPreflight) {
+      return corsPreflight;
+    }
 
     // Rate limiting
     const rateLimitResponse = checkRateLimit(pathname, request, env, logger);
     if (rateLimitResponse) {
-      return rateLimitResponse;
+      return addCorsHeaders(request, rateLimitResponse, corsConfig);
     }
 
     // Auth check
     const apiToken = request.headers.get('API-TOKEN');
     if (apiToken !== env.API_TOKEN && env.API_TOKEN) {
-      return new Response('INVALID_TOKEN', { status: 403 });
+      const authResponse = new Response('INVALID_TOKEN', { status: 403 });
+      return addCorsHeaders(request, authResponse, corsConfig);
     }
 
     // Health check endpoint (GET /health)
     if (pathname === '/health' && request.method === 'GET') {
-      return await handleHealthCheck(logger);
+      const healthResponse = await handleHealthCheck(logger, correlationId);
+      return addCorsHeaders(request, healthResponse, corsConfig);
     }
 
     // Only POST allowed for other endpoints
     if (request.method !== 'POST') {
-      return new Response('Sooner and later you will see great changes made.', { status: 404 });
+      const notFoundResponse = new Response('Sooner and later you will see great changes made.', { status: 404 });
+      return addCorsHeaders(request, notFoundResponse, corsConfig);
     }
 
     // Route to handlers
-    return await routeRequest(pathname, request, env, ctx, correlationId, logger);
+    const response = await routeRequest(pathname, request, env, ctx, correlationId, logger);
+    return addCorsHeaders(request, response, corsConfig);
   },
 };
 
