@@ -7,6 +7,9 @@ import { MockRelay, MockRelayConnection } from '../utils/mocks';
 import { createMockLogger, createMockRelays } from '../utils/testHelpers';
 
 const RELAY1_URL = 'wss://relay1.example.com';
+const RELAY2_URL = 'wss://relay2.example.com';
+const RELAY3_URL = 'wss://relay3.example.com';
+const RELAY4_URL = 'wss://relay4.example.com';
 const TEST_PUBKEY = 'test-pubkey';
 
 describe('ProfileEngine', () => {
@@ -27,7 +30,7 @@ describe('ProfileEngine', () => {
   describe('successful fetch', () => {
     it('should fetch profile from single relay', async () => {
       const logger = createMockLogger();
-      const pubkey = 'test-pubkey';
+      const pubkey = TEST_PUBKEY;
       const profileEvent = createSignedEvent({ kind: 0 });
 
       // Create relay with connection that emits event
@@ -47,11 +50,13 @@ describe('ProfileEngine', () => {
       expect(result.event).toEqual(profileEvent);
       expect(result.pubkey).toBe(pubkey);
       expect(result.relays).toHaveLength(1);
+      expect(result.relays[0].status).toBe('success');
+      expect(result.relays[0].latencyMs).toBeGreaterThanOrEqual(0);
     });
 
     it('should fetch profile from first successful relay (Promise.any)', async () => {
       const logger = createMockLogger();
-      const pubkey = 'test-pubkey';
+      const pubkey = TEST_PUBKEY;
       const profileEvent = createSignedEvent({ kind: 0 });
 
       // Create relay1 that succeeds quickly
@@ -60,7 +65,7 @@ describe('ProfileEngine', () => {
         callbacks.onevent(profileEvent);
         return { close: vi.fn() };
       });
-      const relay1 = new MockRelay('wss://relay1.example.com', { connection: connection1 });
+      const relay1 = new MockRelay(RELAY1_URL, { connection: connection1 });
 
       // Create relay2 that would succeed slower (but won't be needed)
       const connection2 = new MockRelayConnection();
@@ -103,7 +108,7 @@ describe('ProfileEngine', () => {
 
     it('should handle timeout', async () => {
       const logger = createMockLogger();
-      const pubkey = 'test-pubkey';
+      const pubkey = TEST_PUBKEY;
 
       // Create a connection that times out - subscribe never calls onevent
       // The timeout is set up in fetchProfileFromRelay with setTimeout
@@ -139,12 +144,12 @@ describe('ProfileEngine', () => {
         maxRelays: 2,
       };
       const relays = createMockRelays([
-        'wss://relay1.example.com',
-        'wss://relay2.example.com',
-        'wss://relay3.example.com',
-        'wss://relay4.example.com',
+        RELAY1_URL,
+        RELAY2_URL,
+        RELAY3_URL,
+        RELAY4_URL,
       ]);
-      const pubkey = 'test-pubkey';
+      const pubkey = TEST_PUBKEY;
 
       const promise = fetchProfile(pubkey, relays, policy, logger);
       await vi.runAllTimersAsync();
@@ -159,7 +164,7 @@ describe('ProfileEngine', () => {
     it('should return null event for empty relay list', async () => {
       const logger = createMockLogger();
       const relays = createMockRelays([]);
-      const pubkey = 'test-pubkey';
+      const pubkey = TEST_PUBKEY;
 
       const promise = fetchProfile(pubkey, relays, testPolicy, logger);
       await vi.runAllTimersAsync();
@@ -173,7 +178,7 @@ describe('ProfileEngine', () => {
   describe('logging', () => {
     it('should log fetch start', async () => {
       const logger = createMockLogger();
-      const pubkey = 'test-pubkey';
+      const pubkey = TEST_PUBKEY;
       const profileEvent = createSignedEvent({ kind: 0 });
 
       // Create relay with connection that emits event quickly

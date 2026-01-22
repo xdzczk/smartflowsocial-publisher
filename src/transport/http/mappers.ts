@@ -1,8 +1,16 @@
 import type { Event } from 'nostr-tools';
 
+import {
+  AppError,
+  RelayError,
+  TimeoutError,
+  ValidationError,
+} from '../../core/errors';
 import { validateSignedEvent } from '../../core/EventValidator';
 import { normalizeRelayUrls } from '../../core/RelayUrl';
-import type { PublishOutcome, RelayResult } from '../../core/types';
+import type { PublishOutcome, RelayResult, SignedEvent } from '../../core/types';
+import { sanitizeEvent } from '../../security/sanitizer';
+import { validatePublishRequest } from '../../validation/schemas';
 
 // HTTP-level types (transport layer)
 export interface PublishRequest {
@@ -25,52 +33,68 @@ export interface PublishResponse {
 
 export interface ErrorResponse {
   error: string;
+  code?: string;
+  field?: string;
+  suggestion?: string;
+  details?: Record<string, unknown>;
 }
 
 /**
  * Parses and validates a publish request from HTTP body
+ * Uses Valibot schema validation for comprehensive validation
+ * @returns Validated signed event and normalized relay URLs
+ * @throws {ValidationError} if request is invalid
  */
 export function parsePublishRequest(body: unknown): {
-  event: Event;
+  event: SignedEvent;
   relayUrls: string[];
 } {
-  // Validate body structure
-  if (
-    !body ||
-    typeof body !== 'object' ||
-    !('relays' in body) ||
-    !Array.isArray((body as { relays: unknown }).relays) ||
-    !('event' in body) ||
-    !(body as { event: unknown }).event
-  ) {
-    throw new Error('Invalid request: relays must be an array and event must be an object');
-  }
+  // Validate request structure using Valibot
+  const validated = validatePublishRequest(body);
 
-  const publishRequest = body as PublishRequest;
-  const event = publishRequest.event;
+  // Sanitize event content and tags
+  const sanitized = sanitizeEvent({
+    content: validated.event.content,
+    tags: validated.event.tags,
+  });
 
-  // Validate event is signed
-  validateSignedEvent(event);
+  // Merge sanitized content back into event
+  const sanitizedEvent = {
+    ...validated.event,
+    content: sanitized.content,
+    tags: sanitized.tags,
+  };
 
-  // Normalize relays
+  // Validate event is signed - this returns SignedEvent
+  const signedEvent = validateSignedEvent(sanitizedEvent);
+
+  // Normalize relays - this can throw ValidationError with field 'relays'
   let relayUrls: string[];
   try {
-    relayUrls = normalizeRelayUrls(publishRequest.relays);
+    relayUrls = normalizeRelayUrls(validated.relays);
   } catch (error) {
-    throw new Error(
-      error instanceof Error ? error.message : 'Invalid relays array'
+    // Re-throw ValidationError as-is, preserving field name from normalizeRelayUrls
+    if (error instanceof ValidationError) {
+      throw error; // normalizeRelayUrls already sets field to 'relays'
+    }
+    throw new ValidationError(
+      error instanceof Error ? error.message : 'Invalid relays array',
+      'relays'
     );
   }
 
   if (relayUrls.length === 0) {
-    throw new Error('No valid relays after normalization');
+    throw new ValidationError('No valid relays after normalization', 'relays');
   }
 
-  return { event, relayUrls };
+  return { event: signedEvent, relayUrls };
 }
 
 /**
  * Maps a PublishOutcome to HTTP PublishResponse
+ * 
+ * @param outcome The publish outcome from the core engine
+ * @returns HTTP response structure with per-relay results
  */
 export function mapPublishOutcomeToResponse(outcome: PublishOutcome): PublishResponse {
   const results: RelayPublishResult[] = outcome.relays.map((relayResult: RelayResult) => ({
@@ -84,11 +108,74 @@ export function mapPublishOutcomeToResponse(outcome: PublishOutcome): PublishRes
 }
 
 /**
- * Maps an error to HTTP ErrorResponse
+ * Maps an error to HTTP ErrorResponse with enhanced structure
+ * @param error The error to map
+ * @returns HTTP error response with status code
  */
-export function mapErrorToResponse(error: unknown): ErrorResponse {
-  if (error instanceof Error) {
-    return { error: error.message };
+/**
+ * Builds error response for AppError instances
+ */
+function buildAppErrorResponse(error: AppError): ErrorResponse {
+  const response: ErrorResponse = {
+    error: error.message,
+    code: error.code,
+  };
+
+  if (error instanceof ValidationError) {
+    if (error.field) {
+      response.field = error.field;
+    }
+    if (error.suggestion) {
+      response.suggestion = error.suggestion;
+    }
   }
-  return { error: String(error) };
+
+  if (error instanceof RelayError) {
+    response.details = {
+      relay: error.relay,
+      reason: error.reason,
+    };
+  }
+
+  if (error instanceof TimeoutError && error.timeoutMs) {
+    response.details = {
+      timeoutMs: error.timeoutMs,
+    };
+  }
+
+  if (error.details) {
+    response.details = { ...response.details, ...error.details };
+  }
+
+  return response;
+}
+
+export function mapErrorToResponse(error: unknown): {
+  response: ErrorResponse;
+  status: number;
+} {
+  if (error instanceof AppError) {
+    return {
+      response: buildAppErrorResponse(error),
+      status: error.httpStatus,
+    };
+  }
+
+  if (error instanceof Error) {
+    return {
+      response: {
+        error: error.message,
+        code: 'INTERNAL_ERROR',
+      },
+      status: 500,
+    };
+  }
+
+  return {
+    response: {
+      error: String(error),
+      code: 'UNKNOWN_ERROR',
+    },
+    status: 500,
+  };
 }

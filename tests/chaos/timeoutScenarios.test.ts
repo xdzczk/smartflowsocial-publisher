@@ -132,7 +132,8 @@ describe('Chaos Tests - Timeout Scenarios', () => {
 
       // Should timeout within connectionTimeoutMs + some buffer
       expect(elapsed).toBeLessThan(policy.connectionTimeoutMs + 200);
-      expect(outcome.relays[0].status).toBe('failure');
+      expect(outcome.relays.length).toBeGreaterThan(0);
+      expect(outcome.relays[0]?.status).toBe('failure');
     });
   });
 
@@ -165,7 +166,8 @@ describe('Chaos Tests - Timeout Scenarios', () => {
         expect(connection.closed || !connection.isConnected).toBe(true);
       }
 
-      expect(outcome.relays[0].status).toBe('failure');
+      expect(outcome.relays.length).toBeGreaterThan(0);
+      expect(outcome.relays[0]?.status).toBe('failure');
     });
   });
 });

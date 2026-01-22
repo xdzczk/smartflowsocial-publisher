@@ -8,7 +8,7 @@ import { createSignedEvent } from '../../utils/fixtures';
 // Mock the core engines
 vi.mock('../../../src/core/PublishEngine', () => ({
   publishSignedEvent: vi.fn(async () => ({
-    status: 'success',
+    status: 'success' as const,
     relays: [
       {
         relay: 'wss://relay1.example.com' as const,
@@ -181,7 +181,7 @@ describe('HTTP Handlers', () => {
       });
 
       const response = await profileHandler(request, mockEnv, mockCtx);
-      expect(response.status).toBe(422);
+      expect(response.status).toBe(400);
     });
 
     it('should refresh stale cache in background', async () => {

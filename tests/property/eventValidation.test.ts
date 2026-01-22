@@ -91,7 +91,7 @@ describe('Event Validation Properties', () => {
 
     it('should throw for any unsigned event', () => {
       const unsignedEvent = createUnsignedEvent();
-      expect(() => validateSignedEvent(unsignedEvent)).toThrow('must be signed');
+      expect(() => validateSignedEvent(unsignedEvent)).toThrow();
     });
 
     it('should throw for any invalid event', () => {

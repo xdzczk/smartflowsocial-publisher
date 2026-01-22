@@ -3,6 +3,7 @@ import type { PublishPolicy } from './PublishPolicy';
 /**
  * Conservative policy prioritizing reliability
  * Slower but more reliable
+ * Includes retry logic with longer backoff for better reliability
  */
 export const conservativePolicy: PublishPolicy = {
   relayConcurrency: 4,
@@ -11,7 +12,7 @@ export const conservativePolicy: PublishPolicy = {
   overallTimeoutMs: 30000,
   minSuccessRelays: 2,
   retry: {
-    maxAttempts: 1,
-    backoffMs: 2000,
+    maxAttempts: 2, // More retries for reliability
+    backoffMs: 2000, // Longer backoff
   },
 };

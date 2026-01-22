@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
+import { ValidationError } from '../../src/core/errors';
 import {
   isSignedEvent,
   isUnsignedEvent,
@@ -126,24 +127,27 @@ describe('EventValidator', () => {
     it('should return signed event for valid input', () => {
       const event = createSignedEvent();
       const result = validateSignedEvent(event);
-      expect(result).toBe(event);
+      // Valibot validation may return a new object, so check properties instead of reference
+      expect(result).toMatchObject(event);
       // Type check: result should be SignedEvent
       expect(result).toHaveProperty('sig');
+      expect(result.id).toBe(event.id);
+      expect(result.pubkey).toBe(event.pubkey);
     });
 
     it('should throw on invalid event', () => {
-      expect(() => validateSignedEvent(null)).toThrow('Invalid event');
-      expect(() => validateSignedEvent(createMalformedEvent())).toThrow('Invalid event');
+      expect(() => validateSignedEvent(null)).toThrow(ValidationError);
+      expect(() => validateSignedEvent(createMalformedEvent())).toThrow(ValidationError);
     });
 
     it('should throw on unsigned event', () => {
       const event = createUnsignedEvent();
-      expect(() => validateSignedEvent(event)).toThrow('must be signed');
+      expect(() => validateSignedEvent(event)).toThrow(ValidationError);
     });
 
     it('should throw on event with empty sig', () => {
       const event = createSignedEvent({ sig: '' });
-      expect(() => validateSignedEvent(event)).toThrow('must be signed');
+      expect(() => validateSignedEvent(event)).toThrow(ValidationError);
     });
   });
 });

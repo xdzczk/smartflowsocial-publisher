@@ -7,16 +7,19 @@ import type { PublishOutcome, RelayResult, RelayUrl, SignedEvent } from '../../s
  */
  
 export function createSignedEvent(overrides?: Partial<Event>): SignedEvent {
+  // Generate valid 64-char hex strings for id and pubkey, 128-char for sig
+  const id = 'a'.repeat(64);
+  const pubkey = 'b'.repeat(64);
+  const sig = 'c'.repeat(128);
+  
   const baseEvent: Event = {
-    id: 'test-event-id-1234567890abcdef',
-    // eslint-disable-next-line no-secrets/no-secrets
-    pubkey: 'test-pubkey-1234567890abcdef1234567890abcdef',
+    id,
+    pubkey,
     kind: 1,
     created_at: Math.floor(Date.now() / 1000),
     content: 'Test event content',
     tags: [],
-    // eslint-disable-next-line no-secrets/no-secrets
-    sig: 'test-signature-1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef',
+    sig,
     ...overrides,
   };
   return baseEvent as SignedEvent;
@@ -27,10 +30,13 @@ export function createSignedEvent(overrides?: Partial<Event>): SignedEvent {
  */
  
 export function createUnsignedEvent(overrides?: Partial<Event>): Event {
+  // Generate valid 64-char hex strings for id and pubkey
+  const id = 'a'.repeat(64);
+  const pubkey = 'b'.repeat(64);
+  
   const baseEvent: Event = {
-    id: 'test-event-id-1234567890abcdef',
-    // eslint-disable-next-line no-secrets/no-secrets
-    pubkey: 'test-pubkey-1234567890abcdef1234567890abcdef',
+    id,
+    pubkey,
     kind: 1,
     created_at: Math.floor(Date.now() / 1000),
     content: 'Test event content',

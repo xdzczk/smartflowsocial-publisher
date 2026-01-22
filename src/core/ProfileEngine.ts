@@ -3,36 +3,58 @@ import type { Event } from 'nostr-tools';
 import type { Logger } from '../observability/logger';
 import type { ProfilePolicy } from '../policies/ProfilePolicy';
 
+import { TimeoutError } from './errors';
 import type { Relay } from './Relay';
-import type { ProfileResult } from './types';
+import type { ProfileResult, RelayResult } from './types';
+
+const OPERATION_ABORTED_MSG = 'Operation aborted';
 
 /**
  * Fetches a profile event from a single relay
+ * @param relay The relay to fetch from
+ * @param pubkey The pubkey to fetch profile for
+ * @param policy The profile policy with timeout settings
+ * @param logger Logger instance
+ * @param abortSignal Optional abort signal for cancellation
+ * @returns The profile event
+ * @throws {TimeoutError} if operation times out or is aborted
  */
 async function fetchProfileFromRelay(
   relay: Relay,
   pubkey: string,
   policy: ProfilePolicy,
-  logger: Logger
-): Promise<Event> {
+  logger: Logger,
+  abortSignal?: AbortSignal
+): Promise<{ event: Event; latencyMs: number }> {
   const relayUrl = relay.url;
+  const startTime = Date.now();
   logger.info(`[${relayUrl}] Fetching profile for ${pubkey}`);
 
   const connection = await relay.createConnection();
 
   try {
-    // Connect with timeout
+    // Check if already aborted
+    if (abortSignal?.aborted) {
+      throw new TimeoutError(OPERATION_ABORTED_MSG, policy.perRelayTimeoutMs);
+    }
+
+    // Connect with timeout and abort signal support
     const connectTimeout = new Promise<never>((_, reject) => {
-      setTimeout(() => {
-        reject(new Error(`Timeout connecting to ${relayUrl}`));
+      const timeoutId = setTimeout(() => {
+        reject(new TimeoutError(`Timeout connecting to ${relayUrl}`, policy.perRelayTimeoutMs));
       }, policy.perRelayTimeoutMs);
+
+      abortSignal?.addEventListener('abort', () => {
+        clearTimeout(timeoutId);
+        reject(new TimeoutError(OPERATION_ABORTED_MSG, policy.perRelayTimeoutMs));
+      });
     });
 
     await Promise.race([connection.connect(), connectTimeout]);
     logger.info(`[${relayUrl}] Connected`);
 
     // Wait for event with timeout
-    return new Promise<Event>((resolve, reject) => {
+    return new Promise<{ event: Event; latencyMs: number }>((resolve, reject) => {
       let subscription: ReturnType<typeof connection.subscribe> | null = null;
 
       const eventTimeout = setTimeout(() => {
@@ -40,8 +62,20 @@ async function fetchProfileFromRelay(
           subscription.close();
         }
         connection.close();
-        reject(new Error(`Timeout waiting for profile event from ${relayUrl}`));
+        const latencyMs = Date.now() - startTime;
+        reject(new TimeoutError(`Timeout waiting for profile event from ${relayUrl}`, latencyMs));
       }, policy.perRelayTimeoutMs);
+
+      // Handle abort signal
+      abortSignal?.addEventListener('abort', () => {
+        clearTimeout(eventTimeout);
+        if (subscription) {
+          subscription.close();
+        }
+        connection.close();
+        const abortLatencyMs = Date.now() - startTime;
+        reject(new TimeoutError(OPERATION_ABORTED_MSG, abortLatencyMs));
+      });
 
       // Subscribe to get the profile
       subscription = connection.subscribe(
@@ -54,7 +88,8 @@ async function fetchProfileFromRelay(
               subscription.close();
             }
             connection.close();
-            resolve(ev);
+            const latencyMs = Date.now() - startTime;
+            resolve({ event: ev, latencyMs });
           },
           onclose: (reason: string) => {
             clearTimeout(eventTimeout);
@@ -73,12 +108,19 @@ async function fetchProfileFromRelay(
 /**
  * Fetches a profile from multiple relays
  * Returns the first successful result
+ * @param pubkey The pubkey to fetch profile for
+ * @param relays Array of relays to try
+ * @param policy The profile policy with timeout settings
+ * @param logger Logger instance
+ * @param abortSignal Optional abort signal for cancellation
+ * @returns Profile result with event and per-relay results
  */
 export async function fetchProfile(
   pubkey: string,
   relays: Relay[],
   policy: ProfilePolicy,
-  logger: Logger
+  logger: Logger,
+  abortSignal?: AbortSignal
 ): Promise<ProfileResult> {
   if (relays.length === 0) {
     return {
@@ -93,34 +135,45 @@ export async function fetchProfile(
 
   logger.info(`Fetching profile for ${pubkey} from ${limitedRelays.length} relay(s)`);
 
-  // Try to fetch from any relay (Promise.any pattern)
-  const fetchPromises = limitedRelays.map((relay) =>
-    fetchProfileFromRelay(relay, pubkey, policy, logger)
-  );
+  // Track results for all relays
+  const relayResults: RelayResult[] = [];
+  const relayPromises = limitedRelays.map(async (relay) => {
+    const startTime = Date.now();
+    try {
+      const result = await fetchProfileFromRelay(relay, pubkey, policy, logger, abortSignal);
+      relayResults.push({
+        relay: relay.url,
+        status: 'success',
+        latencyMs: result.latencyMs,
+      });
+      return result.event;
+    } catch (error) {
+      const latencyMs = Date.now() - startTime;
+      relayResults.push({
+        relay: relay.url,
+        status: 'failure',
+        reason: error instanceof TimeoutError ? 'timeout' : 'unknown',
+        latencyMs,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      throw error;
+    }
+  });
 
+  // Try to fetch from any relay (Promise.any pattern)
   try {
-    const event = await Promise.any(fetchPromises);
+    const event = await Promise.any(relayPromises);
     return {
       pubkey,
       event,
-      relays: limitedRelays.map((relay) => ({
-        relay: relay.url,
-        status: 'success' as const,
-        latencyMs: 0, // Could track this if needed
-      })),
+      relays: relayResults,
     };
   } catch (error) {
     logger.error(`Failed to fetch profile for ${pubkey} from all relays: ${error}`);
     return {
       pubkey,
       event: null,
-      relays: limitedRelays.map((relay) => ({
-        relay: relay.url,
-        status: 'failure' as const,
-        reason: 'unknown' as const,
-        latencyMs: 0,
-        error: error instanceof Error ? error.message : String(error),
-      })),
+      relays: relayResults,
     };
   }
 }

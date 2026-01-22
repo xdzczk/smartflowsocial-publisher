@@ -11,6 +11,15 @@ export class MockLogger implements Logger {
   public infoLogs: unknown[][] = [];
   public warnLogs: unknown[][] = [];
   public errorLogs: unknown[][] = [];
+  private correlationId?: string;
+
+  setCorrelationId(correlationId: string | undefined): void {
+    this.correlationId = correlationId;
+  }
+
+  getCorrelationId(): string | undefined {
+    return this.correlationId;
+  }
 
   info(...args: unknown[]): void {
     this.infoLogs.push(args);

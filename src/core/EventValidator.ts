@@ -1,31 +1,31 @@
 import type { Event } from 'nostr-tools';
 
+import { validateEvent as validateEventSchema, validateSignedEventSchema } from '../validation/schemas';
+
 import type { SignedEvent, UnsignedEvent } from './types';
 
 /**
  * Validates that an event has the required fields
- * Does not validate signature - use isSignedEvent for that
+ * Uses Valibot schema validation for comprehensive field-level validation
+ * 
+ * @param event The event to validate
+ * @returns Type guard indicating if event has required fields
  */
 export function validateEvent(event: unknown): event is Event {
-  if (!event || typeof event !== 'object') {
+  try {
+    validateEventSchema(event);
+    return true;
+  } catch {
     return false;
   }
-
-  const e = event as Record<string, unknown>;
-  return (
-    typeof e.id === 'string' &&
-    typeof e.pubkey === 'string' &&
-    typeof e.kind === 'number' &&
-    typeof e.sig === 'string' &&
-    typeof e.created_at === 'number' &&
-    typeof e.content === 'string' &&
-    Array.isArray(e.tags)
-  );
 }
 
 /**
  * Checks if an event is signed (has a valid signature field)
  * Returns a branded SignedEvent type if valid
+ * 
+ * @param event The event to check
+ * @returns Type guard indicating if event is signed
  */
 export function isSignedEvent(event: Event): event is SignedEvent {
   return (
@@ -40,22 +40,20 @@ export function isSignedEvent(event: Event): event is SignedEvent {
 
 /**
  * Validates and casts an unknown value to a SignedEvent
- * Throws if validation fails
+ * Uses Valibot schema validation for comprehensive field-level validation
+ * @param event The event to validate
+ * @returns Validated SignedEvent
+ * @throws {ValidationError} if validation fails
  */
 export function validateSignedEvent(event: unknown): SignedEvent {
-  if (!validateEvent(event)) {
-    throw new Error('Invalid event: must have id, pubkey, kind, sig, created_at, content, and tags fields');
-  }
-
-  if (!isSignedEvent(event)) {
-    throw new Error('Invalid event: must be signed (have a valid sig field)');
-  }
-
-  return event;
+  return validateSignedEventSchema(event);
 }
 
 /**
  * Type guard for unsigned events
+ * 
+ * @param event The event to check
+ * @returns Type guard indicating if event is unsigned
  */
 export function isUnsignedEvent(event: Event): event is UnsignedEvent {
   return !isSignedEvent(event);

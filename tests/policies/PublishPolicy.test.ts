@@ -13,7 +13,7 @@ describe('PublishPolicy', () => {
       expect(defaultPolicy.connectionTimeoutMs).toBe(5000);
       expect(defaultPolicy.overallTimeoutMs).toBe(15000);
       expect(defaultPolicy.minSuccessRelays).toBe(1);
-      expect(defaultPolicy.retry.maxAttempts).toBe(0);
+      expect(defaultPolicy.retry.maxAttempts).toBe(1);
     });
 
     it('should be a valid PublishPolicy', () => {

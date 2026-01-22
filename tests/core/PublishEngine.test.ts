@@ -9,6 +9,7 @@ import { createMockLogger, createMockRelays } from '../utils/testHelpers';
 const RELAY1_URL = 'wss://relay1.example.com';
 const RELAY2_URL = 'wss://relay2.example.com';
 const RELAY3_URL = 'wss://relay3.example.com';
+const RELAY4_URL = 'wss://relay4.example.com';
 
 describe('PublishEngine', () => {
   beforeEach(() => {
@@ -199,10 +200,10 @@ describe('PublishEngine', () => {
         relayConcurrency: 2,
       };
       const relays = createMockRelays([
-        'wss://relay1.example.com',
-        'wss://relay2.example.com',
-        'wss://relay3.example.com',
-        'wss://relay4.example.com',
+        RELAY1_URL,
+        RELAY2_URL,
+        RELAY3_URL,
+        RELAY4_URL,
       ]);
       // Add delays to track concurrency
       relays.forEach((relay) => {
@@ -237,8 +238,8 @@ describe('PublishEngine', () => {
         perRelayTimeoutMs: 2000, // Longer than overall timeout
       };
       const relays = createMockRelays([
-        'wss://relay1.example.com',
-        'wss://relay2.example.com',
+        RELAY1_URL,
+        RELAY2_URL,
       ]);
       // Make relays slow
       relays.forEach((relay) => {
@@ -265,9 +266,9 @@ describe('PublishEngine', () => {
     it('should return results in input relay order', async () => {
       const logger = createMockLogger();
       const relayUrls = [
-        'wss://relay1.example.com',
-        'wss://relay2.example.com',
-        'wss://relay3.example.com',
+        RELAY1_URL,
+        RELAY2_URL,
+        RELAY3_URL,
       ];
       const relays = createMockRelays(relayUrls);
       const event = createSignedEvent();

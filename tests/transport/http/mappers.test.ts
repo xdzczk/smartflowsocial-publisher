@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  ValidationError,
+} from '../../../src/core/errors';
+import {
   mapErrorToResponse,
   mapPublishOutcomeToResponse,
   parsePublishRequest,
@@ -9,7 +12,6 @@ import { createPublishOutcome, createRelayResult, createSignedEvent } from '../.
 
 const RELAY1_URL = 'wss://relay1.example.com';
 const RELAY2_URL = 'wss://relay2.example.com';
-const INVALID_REQUEST_MSG = 'Invalid request';
 
 describe('HTTP Mappers', () => {
   describe('parsePublishRequest', () => {
@@ -26,43 +28,49 @@ describe('HTTP Mappers', () => {
       expect(result.relayUrls[0]).toBe(RELAY1_URL);
     });
 
-    it('should throw on null body', () => {
-      expect(() => parsePublishRequest(null)).toThrow(INVALID_REQUEST_MSG);
+    it('should throw ValidationError on null body', () => {
+      expect(() => parsePublishRequest(null)).toThrow(ValidationError);
+      try {
+        parsePublishRequest(null);
+      } catch (error) {
+        expect(error).toBeInstanceOf(ValidationError);
+        expect((error as ValidationError).field).toBe('body');
+      }
     });
 
-    it('should throw on non-object body', () => {
-      expect(() => parsePublishRequest('string')).toThrow(INVALID_REQUEST_MSG);
-      expect(() => parsePublishRequest(123)).toThrow(INVALID_REQUEST_MSG);
+    it('should throw ValidationError on non-object body', () => {
+      expect(() => parsePublishRequest('string')).toThrow(ValidationError);
+      expect(() => parsePublishRequest(123)).toThrow(ValidationError);
     });
 
-    it('should throw on missing relays', () => {
+    it('should throw ValidationError on missing relays', () => {
       const body = {
         event: createSignedEvent(),
       };
-      expect(() => parsePublishRequest(body)).toThrow('Invalid request');
+      expect(() => parsePublishRequest(body)).toThrow(ValidationError);
     });
 
-    it('should throw on non-array relays', () => {
+    it('should throw ValidationError on non-array relays', () => {
       const body = {
         relays: 'not-an-array',
         event: createSignedEvent(),
       };
-      expect(() => parsePublishRequest(body)).toThrow('Invalid request');
+      expect(() => parsePublishRequest(body)).toThrow(ValidationError);
     });
 
-    it('should throw on missing event', () => {
+    it('should throw ValidationError on missing event', () => {
       const body = {
         relays: ['wss://relay.example.com'],
       };
-      expect(() => parsePublishRequest(body)).toThrow('Invalid request');
+      expect(() => parsePublishRequest(body)).toThrow(ValidationError);
     });
 
-    it('should throw on unsigned event', () => {
+    it('should throw ValidationError on unsigned event', () => {
       const body = {
         relays: ['wss://relay.example.com'],
         event: {
-          id: 'test',
-          pubkey: 'test',
+          id: 'a'.repeat(64), // Valid hex
+          pubkey: 'b'.repeat(64), // Valid hex
           kind: 1,
           sig: '', // Empty = unsigned
           created_at: Date.now(),
@@ -70,17 +78,30 @@ describe('HTTP Mappers', () => {
           tags: [],
         },
       };
-      expect(() => parsePublishRequest(body)).toThrow('must be signed');
+      expect(() => parsePublishRequest(body)).toThrow(ValidationError);
+      try {
+        parsePublishRequest(body);
+      } catch (error) {
+        expect(error).toBeInstanceOf(ValidationError);
+        // Field could be 'event.sig' or 'event' depending on validation order
+        expect(['event.sig', 'event']).toContain((error as ValidationError).field);
+      }
     });
 
-    it('should throw on invalid relays after normalization', () => {
+    it('should throw ValidationError on invalid relays after normalization', () => {
       const INVALID_RELAY1 = 'not-a-url';
       const INVALID_RELAY2 = 'also-invalid';
       const body = {
         relays: [INVALID_RELAY1, INVALID_RELAY2],
         event: createSignedEvent(),
       };
-      expect(() => parsePublishRequest(body)).toThrow('No valid relays');
+      expect(() => parsePublishRequest(body)).toThrow(ValidationError);
+      try {
+        parsePublishRequest(body);
+      } catch (error) {
+        expect(error).toBeInstanceOf(ValidationError);
+        expect((error as ValidationError).field).toBe('relays');
+      }
     });
   });
 
@@ -138,20 +159,35 @@ describe('HTTP Mappers', () => {
   describe('mapErrorToResponse', () => {
     it('should map Error to response', () => {
       const error = new Error('Test error');
-      const response = mapErrorToResponse(error);
+      const { response, status } = mapErrorToResponse(error);
       expect(response.error).toBe('Test error');
+      expect(response.code).toBe('INTERNAL_ERROR');
+      expect(status).toBe(500);
+    });
+
+    it('should map ValidationError to response', () => {
+      const error = new ValidationError('Invalid input', 'field1');
+      const { response, status } = mapErrorToResponse(error);
+      expect(response.error).toBe('Invalid input');
+      expect(response.code).toBe('VALIDATION_ERROR');
+      expect(response.field).toBe('field1');
+      expect(status).toBe(400);
     });
 
     it('should map string to response', () => {
       const error = 'String error';
-      const response = mapErrorToResponse(error);
+      const { response, status } = mapErrorToResponse(error);
       expect(response.error).toBe('String error');
+      expect(response.code).toBe('UNKNOWN_ERROR');
+      expect(status).toBe(500);
     });
 
     it('should map unknown type to response', () => {
       const error = { some: 'object' };
-      const response = mapErrorToResponse(error);
+      const { response, status } = mapErrorToResponse(error);
       expect(response.error).toBe('[object Object]');
+      expect(response.code).toBe('UNKNOWN_ERROR');
+      expect(status).toBe(500);
     });
   });
 });

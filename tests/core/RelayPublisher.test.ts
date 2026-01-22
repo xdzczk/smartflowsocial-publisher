@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { publishToRelay } from '../../src/core/RelayPublisher';
+import { publishToRelay, resetCircuitBreakerManager } from '../../src/core/RelayPublisher';
 import type { PublishPolicy } from '../../src/policies/PublishPolicy';
 import { createSignedEvent } from '../utils/fixtures';
 import { MockRelay, MockRelayConnection } from '../utils/mocks';
@@ -15,6 +15,7 @@ describe('RelayPublisher', () => {
 
   afterEach(() => {
     vi.useRealTimers();
+    resetCircuitBreakerManager(); // Reset circuit breaker between tests
   });
 
   const testPolicy: PublishPolicy = {
@@ -40,7 +41,7 @@ describe('RelayPublisher', () => {
       const result = await promise;
 
       expect(result.status).toBe('success');
-      expect(result.relay).toBe('wss://relay.example.com');
+      expect(result.relay).toBe(RELAY_URL);
       expect(result.latencyMs).toBeGreaterThanOrEqual(0);
       expect(result.reason).toBeUndefined();
       expect(result.error).toBeUndefined();
@@ -51,7 +52,7 @@ describe('RelayPublisher', () => {
 
     it('should measure latency correctly', async () => {
       const logger = createMockLogger();
-      const relay = createMockRelay('wss://relay.example.com', {
+      const relay = createMockRelay(RELAY_URL, {
         connectionDelay: 100,
       });
       const connection = relay.getConnection();
@@ -72,7 +73,7 @@ describe('RelayPublisher', () => {
   describe('connection timeout', () => {
     it('should timeout on connection creation', async () => {
       const logger = createMockLogger();
-      const relay = createMockRelay('wss://relay.example.com', {
+      const relay = createMockRelay(RELAY_URL, {
         connectionDelay: 1000, // Longer than connectionTimeoutMs (500)
       });
       const event = createSignedEvent();
@@ -126,7 +127,7 @@ describe('RelayPublisher', () => {
 
     it('should timeout if connection takes too long, leaving no time for publish', async () => {
       const logger = createMockLogger();
-      const relay = createMockRelay('wss://relay.example.com', {
+      const relay = createMockRelay(RELAY_URL, {
         connectionDelay: 600, // Uses most of perRelayTimeoutMs
       });
       const event = createSignedEvent();
@@ -150,7 +151,7 @@ describe('RelayPublisher', () => {
   describe('connection failure', () => {
     it('should handle connection creation failure', async () => {
       const logger = createMockLogger();
-      const relay = createMockRelay('wss://relay.example.com', {
+      const relay = createMockRelay(RELAY_URL, {
         shouldFailCreateConnection: true,
         createConnectionError: new Error('Failed to create connection'),
       });
@@ -210,7 +211,7 @@ describe('RelayPublisher', () => {
   describe('error classification', () => {
     it('should classify timeout errors correctly', async () => {
       const logger = createMockLogger();
-      const relay = createMockRelay('wss://relay.example.com', {
+      const relay = createMockRelay(RELAY_URL, {
         connectionDelay: 1000,
       });
       const event = createSignedEvent();
@@ -242,7 +243,7 @@ describe('RelayPublisher', () => {
 
     it('should classify unreachable errors correctly', async () => {
       const logger = createMockLogger();
-      const relay = createMockRelay('wss://relay.example.com', {
+      const relay = createMockRelay(RELAY_URL, {
         shouldFailCreateConnection: true,
         createConnectionError: new Error('ECONNREFUSED'),
       });
@@ -257,7 +258,7 @@ describe('RelayPublisher', () => {
 
     it('should classify unknown errors as unknown', async () => {
       const logger = createMockLogger();
-      const relay = createMockRelay('wss://relay.example.com', {
+      const relay = createMockRelay(RELAY_URL, {
         shouldFailCreateConnection: true,
         createConnectionError: new Error('Some weird error'),
       });
@@ -287,7 +288,7 @@ describe('RelayPublisher', () => {
 
     it('should close connection on failure', async () => {
       const logger = createMockLogger();
-      const relay = createMockRelay('wss://relay.example.com', {
+      const relay = createMockRelay(RELAY_URL, {
         shouldFailCreateConnection: true,
       });
       const event = createSignedEvent();
@@ -323,12 +324,12 @@ describe('RelayPublisher', () => {
       await vi.runAllTimersAsync();
       await promise;
 
-      expect(logger.infoLogs.some((log) => log.join(' ').includes('Starting publish'))).toBe(true);
+      expect(logger.infoLogs.some((log) => log.join(' ').includes('Starting publish for event'))).toBe(true);
     });
 
     it('should log errors', async () => {
       const logger = createMockLogger();
-      const relay = createMockRelay('wss://relay.example.com', {
+      const relay = createMockRelay(RELAY_URL, {
         shouldFailCreateConnection: true,
       });
       const event = createSignedEvent();

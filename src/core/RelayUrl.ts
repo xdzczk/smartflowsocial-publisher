@@ -1,3 +1,4 @@
+import { ValidationError } from './errors';
 import type { RelayUrl } from './types';
 
 /**
@@ -54,11 +55,11 @@ function normalizeSingleRelay(relay: string): string | null {
  * - Caps at max 12 relays
  * @param relays Array of relay URL strings
  * @returns Array of normalized RelayUrl branded strings
- * @throws Error if relays is not an array
+ * @throws {ValidationError} if relays is not an array
  */
 export function normalizeRelayUrls(relays: unknown): RelayUrl[] {
   if (!relays || !Array.isArray(relays)) {
-    throw new Error('relays must be an array');
+    throw new ValidationError('relays must be an array', 'relays');
   }
 
   const MAX_RELAYS = 12;
@@ -87,6 +88,9 @@ export function normalizeRelayUrls(relays: unknown): RelayUrl[] {
 /**
  * Cleans URLs (similar to cleanURLs from utils)
  * Less strict than normalizeRelayUrls - just validates URL format
+ * 
+ * @param urls Array of URL strings to clean
+ * @returns Array of valid URL origins
  */
 export function cleanUrls(urls: unknown): string[] {
   if (!urls || !Array.isArray(urls)) {
