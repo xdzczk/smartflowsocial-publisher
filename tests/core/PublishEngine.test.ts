@@ -54,7 +54,7 @@ describe('PublishEngine', () => {
 
       expect(outcome.status).toBe('success');
       expect(outcome.relays).toHaveLength(1);
-      expect(outcome.relays[0].status).toBe('success');
+      expect(outcome.relays[0]?.status).toBe('success');
     });
 
     it('should handle single relay failure', async () => {
@@ -74,7 +74,7 @@ describe('PublishEngine', () => {
       const outcome = await promise;
 
       expect(outcome.status).toBe('failed');
-      expect(outcome.relays[0].status).toBe('failure');
+      expect(outcome.relays[0]?.status).toBe('failure');
     });
   });
 
@@ -310,9 +310,9 @@ describe('PublishEngine', () => {
       const outcome = await promise;
 
       expect(outcome.relays).toHaveLength(3);
-      expect(outcome.relays[0].relay).toBe(relayUrls[0]);
-      expect(outcome.relays[1].relay).toBe(relayUrls[1]);
-      expect(outcome.relays[2].relay).toBe(relayUrls[2]);
+      expect(outcome.relays[0]?.relay).toBe(relayUrls[0]);
+      expect(outcome.relays[1]?.relay).toBe(relayUrls[1]);
+      expect(outcome.relays[2]?.relay).toBe(relayUrls[2]);
     });
   });
 

@@ -1,6 +1,8 @@
 import type { Logger } from './logger';
 import type { MetricsExporter } from './metricsExport';
 
+type MetricsExporterType = MetricsExporter;
+
 /**
  * Metric types for tracking
  */
@@ -204,9 +206,10 @@ export async function createMetrics(logger: Logger, env?: {
   METRICS_EXPORT_ENABLED?: string;
   METRICS_EXPORT_INTERVAL_MS?: string;
 }): Promise<Metrics> {
-  let exporter: import('./metricsExport').MetricsExporter | null = null;
+  let exporter: MetricsExporterType | null = null;
   if (env?.METRICS_EXPORT_ENABLED === 'true') {
-    const { createMetricsExporter } = await import('./metricsExport');
+    const metricsExportModule = await import('./metricsExport');
+    const { createMetricsExporter } = metricsExportModule;
     exporter = createMetricsExporter(env) ?? null;
   }
   const exportInterval = env?.METRICS_EXPORT_INTERVAL_MS

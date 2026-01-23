@@ -18,9 +18,11 @@ API-TOKEN: your-secret-token
 
 ## Endpoints
 
-### POST /publish
+### POST /publish (or POST /)
 
 Publishes a single signed Nostr event to multiple relays.
+
+**Note:** The root endpoint `/` is an alias for `/publish` and behaves identically.
 
 #### Request
 

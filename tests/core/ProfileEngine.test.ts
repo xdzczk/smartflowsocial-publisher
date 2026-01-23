@@ -37,7 +37,11 @@ describe('ProfileEngine', () => {
       const connection = new MockRelayConnection();
       connection.subscribe = vi.fn((_filters, callbacks) => {
         // Immediately emit event
-        callbacks.onevent(profileEvent);
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access -- Mock typing for test
+        if (callbacks.onevent) {
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access -- Mock typing for test
+          callbacks.onevent(profileEvent);
+        }
         return { close: vi.fn() };
       });
       const relay = new MockRelay(RELAY1_URL, { connection });
@@ -50,8 +54,8 @@ describe('ProfileEngine', () => {
       expect(result.event).toEqual(profileEvent);
       expect(result.pubkey).toBe(pubkey);
       expect(result.relays).toHaveLength(1);
-      expect(result.relays[0].status).toBe('success');
-      expect(result.relays[0].latencyMs).toBeGreaterThanOrEqual(0);
+      expect(result.relays[0]?.status).toBe('success');
+      expect(result.relays[0]?.latencyMs).toBeGreaterThanOrEqual(0);
     });
 
     it('should fetch profile from first successful relay (Promise.any)', async () => {
@@ -62,7 +66,11 @@ describe('ProfileEngine', () => {
       // Create relay1 that succeeds quickly
       const connection1 = new MockRelayConnection();
       connection1.subscribe = vi.fn((_filters, callbacks) => {
-        callbacks.onevent(profileEvent);
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access -- Mock typing for test
+        if (callbacks.onevent) {
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access -- Mock typing for test
+          callbacks.onevent(profileEvent);
+        }
         return { close: vi.fn() };
       });
       const relay1 = new MockRelay(RELAY1_URL, { connection: connection1 });
@@ -70,7 +78,11 @@ describe('ProfileEngine', () => {
       // Create relay2 that would succeed slower (but won't be needed)
       const connection2 = new MockRelayConnection();
       connection2.subscribe = vi.fn((_filters, callbacks) => {
-        callbacks.onevent(createSignedEvent({ kind: 0, content: 'slower' }));
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access -- Mock typing for test
+        if (callbacks.onevent) {
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access -- Mock typing for test
+          callbacks.onevent(createSignedEvent({ kind: 0, content: 'slower' }));
+        }
         return { close: vi.fn() };
       });
       const relay2 = new MockRelay('wss://relay2.example.com', { connection: connection2 });
@@ -93,7 +105,7 @@ describe('ProfileEngine', () => {
       const pubkey = TEST_PUBKEY;
 
       // Make relay fail
-      const connection = relays[0].getConnection();
+      const connection = relays[0]?.getConnection();
       if (connection) {
         connection.shouldFailConnect = true;
       }
@@ -103,7 +115,7 @@ describe('ProfileEngine', () => {
       const result = await promise;
 
       expect(result.event).toBeNull();
-      expect(result.relays[0].status).toBe('failure');
+      expect(result.relays[0]?.status).toBe('failure');
     });
 
     it('should handle timeout', async () => {
@@ -132,7 +144,7 @@ describe('ProfileEngine', () => {
       const result = await promise;
 
       expect(result.event).toBeNull();
-      expect(result.relays[0].status).toBe('failure');
+      expect(result.relays[0]?.status).toBe('failure');
     }, 15000); // Increase timeout for this test
   });
 
@@ -185,7 +197,11 @@ describe('ProfileEngine', () => {
       const connection = new MockRelayConnection();
       connection.subscribe = vi.fn((_filters, callbacks) => {
         // Call onevent immediately
-        callbacks.onevent(profileEvent);
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access -- Mock typing for test
+        if (callbacks.onevent) {
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access -- Mock typing for test
+          callbacks.onevent(profileEvent);
+        }
         return { close: vi.fn() };
       });
       const relay = new MockRelay(RELAY1_URL, { connection });
@@ -205,7 +221,7 @@ describe('ProfileEngine', () => {
       const relays = createMockRelays([RELAY1_URL]);
       const pubkey = TEST_PUBKEY;
 
-      const connection = relays[0].getConnection();
+      const connection = relays[0]?.getConnection();
       if (connection) {
         connection.shouldFailConnect = true;
       }

@@ -1,0 +1,114 @@
+name: Coverage Report
+
+on:
+  pull_request:
+    branches: [main, develop]
+  push:
+    branches: [main, develop]
+  workflow_dispatch:
+
+jobs:
+  coverage:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Full history for coverage diff
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 10
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "pnpm"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run tests with coverage
+        run: pnpm test:coverage
+        env:
+          NODE_ENV: test
+
+      - name: Extract coverage metrics
+        id: coverage
+        run: |
+          node <<'NODE'
+          const fs = require('fs');
+          const summary = JSON.parse(
+            fs.readFileSync('coverage/coverage-summary.json', 'utf8'),
+          ).total;
+          const thresholds = { lines: 85, functions: 85, branches: 85, statements: 85 };
+          const metrics = ['lines', 'functions', 'branches', 'statements'];
+
+          const statusEmoji = (pct, threshold) => (pct >= threshold ? '✅' : '❌');
+
+          const lines = [];
+          for (const metric of metrics) {
+            const pct = Number(summary[metric]?.pct ?? 0);
+            const threshold = thresholds[metric];
+            lines.push(`${metric}=${pct.toFixed(2)}`);
+            lines.push(`${metric}_status=${statusEmoji(pct, threshold)}`);
+          }
+
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `${lines.join('\n')}\n`);
+          NODE
+
+      - name: Check coverage thresholds
+        run: |
+          node -e "
+            const fs = require('fs');
+            const coverage = JSON.parse(fs.readFileSync('coverage/coverage-summary.json', 'utf8'));
+            const total = coverage.total;
+            const thresholds = { lines: 85, functions: 85, branches: 85, statements: 85 };
+            let failed = false;
+            for (const [metric, threshold] of Object.entries(thresholds)) {
+              const actual = total[metric].pct;
+              if (actual < threshold) {
+                console.error(\`❌ \${metric}: \${actual.toFixed(2)}% < \${threshold}%\`);
+                failed = true;
+              } else {
+                console.log(\`✅ \${metric}: \${actual.toFixed(2)}% >= \${threshold}%\`);
+              }
+            }
+            if (failed) {
+              console.log('');
+              console.log('⚠️  Coverage thresholds not met. This is expected during development.');
+              console.log('   Coverage will improve as more tests are added.');
+            }
+            process.exit(failed ? 1 : 0);
+          "
+        continue-on-error: true
+
+      - name: Upload coverage reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: |
+            coverage/
+          retention-days: 30
+
+      - name: Comment PR with coverage
+        if: github.event_name == 'pull_request'
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          recreate: true
+          message: |
+            ## 📊 Test Coverage Report
+
+            Coverage for this PR:
+
+            | Metric | Coverage | Threshold | Status |
+            |--------|----------|-----------|--------|
+            | Lines | ${{ steps.coverage.outputs.lines }}% | 85% | ${{ steps.coverage.outputs.lines_status }} |
+            | Functions | ${{ steps.coverage.outputs.functions }}% | 85% | ${{ steps.coverage.outputs.functions_status }} |
+            | Branches | ${{ steps.coverage.outputs.branches }}% | 85% | ${{ steps.coverage.outputs.branches_status }} |
+            | Statements | ${{ steps.coverage.outputs.statements }}% | 85% | ${{ steps.coverage.outputs.statements_status }} |
+
+            📄 [View detailed coverage report](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})

@@ -41,14 +41,16 @@ describe('Chaos Tests - Timeout Scenarios', () => {
       const event = createSignedEvent();
 
       // Make connection slow
-      relays[0].connectionDelay = 1000; // Longer than connectionTimeoutMs
+      if (relays[0]) {
+        relays[0].connectionDelay = 1000; // Longer than connectionTimeoutMs
+      }
 
       const promise = publishSignedEvent(event, relays, policy, logger);
       vi.advanceTimersByTime(600);
       const outcome = await promise;
 
-      expect(outcome.relays[0].status).toBe('failure');
-      expect(outcome.relays[0].reason).toBe('connection_timeout');
+      expect(outcome.relays[0]?.status).toBe('failure');
+      expect(outcome.relays[0]?.reason).toBe('connection_timeout');
     });
   });
 
@@ -77,7 +79,7 @@ describe('Chaos Tests - Timeout Scenarios', () => {
       const event = createSignedEvent();
 
       // Make publish slow
-      const connection = relays[0].getConnection();
+      const connection = relays[0]?.getConnection();
       if (connection) {
         connection.publishDelay = 2000; // Longer than perRelayTimeoutMs
       }
@@ -86,8 +88,8 @@ describe('Chaos Tests - Timeout Scenarios', () => {
       vi.advanceTimersByTime(1500);
       const outcome = await promise;
 
-      expect(outcome.relays[0].status).toBe('failure');
-      expect(outcome.relays[0].reason).toBe('publish_timeout');
+      expect(outcome.relays[0]?.status).toBe('failure');
+      expect(outcome.relays[0]?.reason).toBe('publish_timeout');
     });
   });
 
@@ -162,7 +164,9 @@ describe('Chaos Tests - Timeout Scenarios', () => {
       const event = createSignedEvent();
 
       // Make connection timeout
-      relays[0].connectionDelay = 300; // Longer than connectionTimeoutMs
+      if (relays[0]) {
+        relays[0].connectionDelay = 300; // Longer than connectionTimeoutMs
+      }
 
       const startTime = Date.now();
       const promise = publishSignedEvent(event, relays, policy, logger);
@@ -202,14 +206,16 @@ describe('Chaos Tests - Timeout Scenarios', () => {
       const event = createSignedEvent();
 
       // Make connection timeout
-      relays[0].connectionDelay = 1000;
+      if (relays[0]) {
+        relays[0].connectionDelay = 1000;
+      }
 
       const promise = publishSignedEvent(event, relays, policy, logger);
       vi.advanceTimersByTime(1100);
       const outcome = await promise;
 
       // Connection should be closed (checked via mock)
-      const connection = relays[0].getConnection();
+      const connection = relays[0]?.getConnection();
       // Connection might be null if creation failed, or closed if it succeeded
       if (connection) {
         // If connection was created, it should be closed

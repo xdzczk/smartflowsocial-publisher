@@ -55,9 +55,9 @@ describe('Chaos Tests - Relay Failures', () => {
       const event = createSignedEvent();
 
       // Randomly make some fail
-      const conn1 = relays[1].getConnection();
+      const conn1 = relays[1]?.getConnection();
       if (conn1) conn1.shouldFailPublish = true;
-      const conn3 = relays[3].getConnection();
+      const conn3 = relays[3]?.getConnection();
       if (conn3) conn3.shouldFailPublish = true;
 
       const promise = publishSignedEvent(event, relays, testPolicy, logger);
@@ -142,19 +142,21 @@ describe('Chaos Tests - Relay Failures', () => {
 
       // Relay 1: success (default)
       // Relay 2: timeout (slow)
-      const connection2 = relays[1].getConnection();
+      const connection2 = relays[1]?.getConnection();
       if (connection2) {
         connection2.publishDelay = 2000;
       }
       // Relay 3: rejected
-      const connection3 = relays[2].getConnection();
+      const connection3 = relays[2]?.getConnection();
       if (connection3) {
         connection3.shouldFailPublish = true;
         connection3.publishError = new Error('REJECTED: invalid');
       }
       // Relay 4: unreachable
-      relays[3].shouldFailCreateConnection = true;
-      relays[3].createConnectionError = new Error('ECONNREFUSED');
+      if (relays[3]) {
+        relays[3].shouldFailCreateConnection = true;
+        relays[3].createConnectionError = new Error('ECONNREFUSED');
+      }
 
       const policy: PublishPolicy = {
         ...testPolicy,

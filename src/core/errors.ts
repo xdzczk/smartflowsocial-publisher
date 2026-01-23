@@ -17,7 +17,7 @@ export abstract class AppError extends Error {
     this.name = this.constructor.name;
     this.details = details;
     // Maintains proper stack trace for where our error was thrown (only available on V8)
-    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- V8-specific API check
     if (Error.captureStackTrace) {
       Error.captureStackTrace(this, this.constructor);
     }

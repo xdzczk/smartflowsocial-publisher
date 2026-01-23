@@ -21,7 +21,7 @@ describe('EventValidator', () => {
     });
 
     it('should reject undefined', () => {
-      // eslint-disable-next-line unicorn/no-useless-undefined
+      // eslint-disable-next-line unicorn/no-useless-undefined -- Testing undefined input
       expect(validateEvent(undefined)).toBe(false);
     });
 

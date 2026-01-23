@@ -181,7 +181,8 @@ async function publishToRelayAttempt(
         connection.close();
         logger.info(`[${relayUrl}] Connection closed`);
       } catch (closeError) {
-        logger.warn(`[${relayUrl}] Error closing connection: ${closeError}`);
+        const errorMessage = closeError instanceof Error ? closeError.message : String(closeError);
+        logger.warn(`[${relayUrl}] Error closing connection: ${errorMessage}`);
       }
     }
   }

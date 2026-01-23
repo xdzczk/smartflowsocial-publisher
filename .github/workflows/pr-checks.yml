@@ -1,0 +1,129 @@
+name: PR Checks
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+jobs:
+  pr-checks:
+    name: PR Quality Checks
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 10
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "pnpm"
+
+      - name: Cache TypeScript build info
+        uses: actions/cache@v4
+        with:
+          path: |
+            .tsbuildinfo
+            **/*.tsbuildinfo
+          key: ts-${{ runner.os }}-${{ hashFiles('**/*.ts', '**/*.tsx', 'tsconfig.json') }}
+          restore-keys: |
+            ts-${{ runner.os }}-
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Check PR title
+        uses: amannn/action-semantic-pull-request@v5
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          types: |
+            feat
+            fix
+            docs
+            style
+            refactor
+            test
+            chore
+            perf
+            ci
+          requireScope: false
+          subjectPattern: ^(?![A-Z]).+$
+          subjectPatternError: |
+            The subject "{subject}" found in the pull request title "{title}"
+            must not start with an uppercase character.
+
+      - name: Run lint (no cache)
+        run: pnpm lint:ci
+
+      - name: Check Prettier formatting
+        run: pnpm format:check
+
+      - name: Run type check
+        run: pnpm typecheck
+
+      - name: Run tests
+        run: pnpm test
+
+      - name: Check test coverage
+        run: |
+          pnpm test:coverage
+          node -e "
+            const fs = require('fs');
+            const coverage = JSON.parse(fs.readFileSync('coverage/coverage-summary.json', 'utf8'));
+            const total = coverage.total;
+            const thresholds = { lines: 85, functions: 85, branches: 85, statements: 85 };
+            let failed = false;
+            for (const [metric, threshold] of Object.entries(thresholds)) {
+              const actual = total[metric].pct;
+              if (actual < threshold) {
+                console.error(\`❌ \${metric}: \${actual.toFixed(2)}% < \${threshold}%\`);
+                failed = true;
+              } else {
+                console.log(\`✅ \${metric}: \${actual.toFixed(2)}% >= \${threshold}%\`);
+              }
+            }
+            process.exit(failed ? 1 : 0);
+          "
+
+      - name: Comment PR with test results
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const fs = require('fs');
+            let comment = '## 🧪 Test Results\n\n';
+
+            // Check if coverage file exists
+            if (fs.existsSync('coverage/coverage-summary.json')) {
+              const coverage = JSON.parse(fs.readFileSync('coverage/coverage-summary.json', 'utf8'));
+              const total = coverage.total;
+              
+              comment += '### Coverage Summary\n\n';
+              comment += '| Metric | Coverage | Threshold | Status |\n';
+              comment += '|--------|----------|-----------|--------|\n';
+              
+              const thresholds = { lines: 85, functions: 85, branches: 85, statements: 85 };
+              for (const [metric, threshold] of Object.entries(thresholds)) {
+                const actual = total[metric].pct;
+                const status = actual >= threshold ? '✅' : '❌';
+                comment += `| ${metric} | ${actual.toFixed(2)}% | ${threshold}% | ${status} |\n`;
+              }
+            }
+
+            comment += '\n---\n\n';
+            comment += '✅ All checks passed!';
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: comment
+            });

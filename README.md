@@ -105,7 +105,7 @@ The service provides four main endpoints:
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/publish` | POST | Publish a single event to multiple relays |
+| `/` or `/publish` | POST | Publish a single event to multiple relays |
 | `/batch` | POST | Publish multiple events in a single request |
 | `/profile` | POST | Fetch a Nostr profile (kind 0 event) |
 | `/health` | GET | Check health status of known relays |
@@ -700,13 +700,94 @@ pnpm test
 pnpm test:unit
 pnpm test:integration
 pnpm test:chaos
+pnpm test:property
+pnpm test:security
 
 # Type checking
 pnpm typecheck
 
 # Linting
 pnpm lint
+
+# Format code
+pnpm format
 ```
+
+### Pre-commit Hooks
+
+This repository uses [Husky](https://typicode.github.io/husky/) and [lint-staged](https://github.com/lint-staged/lint-staged) to ensure code quality before commits.
+
+**Automatic checks on commit:**
+- ESLint with auto-fix on staged TypeScript files
+- Prettier formatting on staged files
+- TypeScript type checking
+
+**Setup:**
+```bash
+# Hooks are automatically set up when you run:
+pnpm install
+```
+
+The pre-commit hook runs `lint-staged`, which executes:
+- `eslint --fix` on staged `.ts` files
+- `prettier --write` on staged files
+
+### CI/CD
+
+This repository uses GitHub Actions for continuous integration and deployment.
+
+**Workflows:**
+
+1. **CI** (`.github/workflows/ci.yml`)
+   - Runs on: Pull requests, pushes to main/develop, manual trigger
+   - Jobs:
+     - Lint & Type Check
+     - Unit Tests
+     - Integration Tests
+     - Property-Based Tests
+     - Chaos Tests
+     - Security Tests
+     - Test Summary
+
+2. **PR Checks** (`.github/workflows/pr-checks.yml`)
+   - Runs on: Pull request opened/synchronized/reopened/ready_for_review
+   - Validates:
+     - Semantic PR title (feat/fix/docs/etc.)
+     - Lint and formatting
+     - TypeScript type checking
+     - All test suites
+     - Coverage thresholds (85%)
+   - Comments on PR with test results
+
+3. **Coverage** (`.github/workflows/coverage.yml`)
+   - Runs on: Pull requests, pushes to main/develop, manual trigger
+   - Generates coverage reports
+   - Checks coverage thresholds (85% lines/functions/branches/statements)
+   - Comments on PR with coverage summary
+
+**Coverage Thresholds:**
+- Lines: 85%
+- Functions: 85%
+- Branches: 85%
+- Statements: 85%
+
+### Security Testing
+
+The repository includes a comprehensive security test suite in `tests/security/` that validates:
+
+- **Input Validation**: Required fields, types, formats, size limits
+- **Authentication**: API token validation, case sensitivity, missing tokens
+- **Rate Limiting**: Sliding window algorithm, per-client tracking, window reset
+- **Replay Protection**: Event ID tracking, duplicate detection, TTL expiration
+- **XSS Prevention**: Content sanitization, HTML entity encoding
+- **Request Size Limits**: DoS prevention via size validation
+
+**Run security tests:**
+```bash
+pnpm test:security
+```
+
+See [tests/security/README.md](tests/security/README.md) for detailed documentation.
 
 ### Project Structure
 
@@ -716,6 +797,35 @@ pnpm lint
 - `src/policies/` - Publishing policies
 - `src/middleware/` - Rate limiting, CORS
 - `src/observability/` - Logging, metrics, tracing
+- `src/security/` - Security features (replay protection, sanitization)
 - `tests/` - Test suites
+  - `tests/core/` - Unit tests for core logic
+  - `tests/policies/` - Policy tests
+  - `tests/adapters/` - Adapter tests
+  - `tests/transport/` - Integration tests
+  - `tests/chaos/` - Chaos engineering tests
+  - `tests/property/` - Property-based tests
+  - `tests/security/` - Security tests
 
 For detailed architecture documentation, see [ARCHITECTURE.md](docs/ARCHITECTURE.md).
+
+### Code Quality
+
+This repository maintains high code quality standards:
+
+- **TypeScript**: Strict mode with additional safety flags
+  - `noUncheckedIndexedAccess`: Prevents undefined array access
+  - `noImplicitOverride`: Requires explicit override keyword
+  - `noPropertyAccessFromIndexSignature`: Requires bracket notation for index signatures
+
+- **ESLint**: Comprehensive linting rules
+  - Stricter TypeScript rules (no-unsafe-* as errors)
+  - Consistent type imports
+  - Promise handling rules
+  - Code quality rules (SonarJS, Unicorn)
+
+- **Pre-commit Hooks**: Automatic code quality checks before commits
+
+- **CI/CD**: Automated testing and quality checks on every PR
+
+- **Test Coverage**: 85% threshold for lines, functions, branches, and statements

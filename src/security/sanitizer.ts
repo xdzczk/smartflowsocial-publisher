@@ -143,7 +143,7 @@ export function sanitizeEvent(event: {
 }): { content: string; tags: unknown[][] } {
   // Validate event structure
   // Note: typeof null === 'object' in JavaScript, so we need explicit null check
-  // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+  // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- null check needed for runtime validation
   if (typeof event !== 'object' || event === null) {
     throw new Error('Event must be an object');
   }
@@ -178,5 +178,5 @@ export function encodeHTMLEntities(str: string): string {
     '/': '&#x2F;',
   };
 
-  return str.replace(/[&<>"'/]/g, (char) => entityMap[char] || char);
+  return str.replace(/[&<>"'/]/g, (char) => entityMap[char] ?? char);
 }

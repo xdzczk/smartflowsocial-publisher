@@ -125,12 +125,12 @@ describe('stateMachine', () => {
       
       const history = machine.getTransitionHistory();
       expect(history.length).toBe(3);
-      expect(history[0].from).toBe('idle');
-      expect(history[0].to).toBe('connecting');
-      expect(history[1].from).toBe('connecting');
-      expect(history[1].to).toBe('publishing');
-      expect(history[2].from).toBe('publishing');
-      expect(history[2].to).toBe('success');
+      expect(history[0]?.from).toBe('idle');
+      expect(history[0]?.to).toBe('connecting');
+      expect(history[1]?.from).toBe('connecting');
+      expect(history[1]?.to).toBe('publishing');
+      expect(history[2]?.from).toBe('publishing');
+      expect(history[2]?.to).toBe('success');
     });
 
     it('should reset to idle', () => {

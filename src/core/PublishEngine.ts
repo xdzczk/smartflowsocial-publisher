@@ -53,7 +53,7 @@ async function publishWithEarlyReturn(
     pendingPromises.set(relay.url, publishPromise);
     
     // Wrap the promise to handle result processing and cleanup
-    // eslint-disable-next-line promise/prefer-await-to-then
+    // eslint-disable-next-line promise/prefer-await-to-then -- Promise chain needed for cleanup logic
     const wrappedPromise = publishPromise.then((result) => {
       results.push(result);
       pendingPromises.delete(relay.url);
@@ -66,10 +66,10 @@ async function publishWithEarlyReturn(
     });
     
     // Clean up from executing set when done
-    // eslint-disable-next-line promise/prefer-await-to-then
+    // eslint-disable-next-line promise/prefer-await-to-then -- Cleanup chain needed
     wrappedPromise.finally(() => {
       executing.delete(wrappedPromise);
-      // eslint-disable-next-line promise/prefer-await-to-then
+      // eslint-disable-next-line promise/prefer-await-to-then -- Error handling in cleanup
     }).catch(() => {
       // Ignore errors in cleanup
     });
@@ -81,7 +81,7 @@ async function publishWithEarlyReturn(
   let relayIndex = 0;
   while (relayIndex < relays.length && !abortController.signal.aborted) {
     // Wait if we're at the concurrency limit
-    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- Signal can be aborted during loop
     while (executing.size >= policy.relayConcurrency && !abortController.signal.aborted) {
       // Wait for at least one promise to complete
       await Promise.race(executing);
@@ -90,10 +90,13 @@ async function publishWithEarlyReturn(
     
     // Removed early break - start all publishes regardless of success count
     
-    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- Signal can be aborted during loop
     if (!abortController.signal.aborted) {
-      startPublish(relays[relayIndex]);
-      relayIndex++;
+      const relay = relays[relayIndex];
+      if (relay) {
+        startPublish(relay);
+        relayIndex++;
+      }
     }
   }
   
@@ -264,7 +267,8 @@ export async function publishSignedEvent(
       );
       // Results are already processed via onResult callback
     } catch (error) {
-      logger.error(`[${eventId}] Error in concurrent publish: ${error}`);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      logger.error(`[${eventId}] Error in concurrent publish: ${errorMessage}`);
       throw error;
     } finally {
       clearTimeout(timeoutId);
@@ -298,7 +302,8 @@ export async function publishSignedEvent(
       }),
     ]);
   } catch (error) {
-    logger.error(`[${eventId}] Error during publish: ${error}`);
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    logger.error(`[${eventId}] Error during publish: ${errorMessage}`);
     // Continue to return results even if there was an error
   } finally {
     clearTimeout(timeoutId);
@@ -437,7 +442,8 @@ export async function publishSignedEventStreaming(
         processPublishResult
       );
     } catch (error) {
-      logger.error(`[${eventId}] Error in concurrent publish: ${error}`);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      logger.error(`[${eventId}] Error in concurrent publish: ${errorMessage}`);
       throw error;
     } finally {
       clearTimeout(timeoutId);
@@ -471,7 +477,8 @@ export async function publishSignedEventStreaming(
       }),
     ]);
   } catch (error) {
-    logger.error(`[${eventId}] Error during publish: ${error}`);
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    logger.error(`[${eventId}] Error during publish: ${errorMessage}`);
     // Continue to return results even if there was an error
   } finally {
     clearTimeout(timeoutId);

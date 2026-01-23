@@ -92,10 +92,11 @@ export function createPublishOutcome(
   status: 'success' | 'partial' | 'failed',
   relays: RelayResult[]
 ): PublishOutcome {
-  return {
+  const outcome: PublishOutcome = {
     status,
     relays,
-  } as PublishOutcome;
+  };
+  return outcome;
 }
 
 /**

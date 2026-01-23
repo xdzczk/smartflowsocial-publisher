@@ -169,7 +169,8 @@ export async function fetchProfile(
       relays: relayResults,
     };
   } catch (error) {
-    logger.error(`Failed to fetch profile for ${pubkey} from all relays: ${error}`);
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    logger.error(`Failed to fetch profile for ${pubkey} from all relays: ${errorMessage}`);
     return {
       pubkey,
       event: null,

@@ -59,13 +59,15 @@ export async function publishBatch(
       const outcome = await publishSignedEvent(event, relays, policy, logger, metrics);
       return { eventId: event.id, outcome };
     } catch (error) {
-      logger.error(`[${event.id}] Batch publish failed: ${error}`);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      logger.error(`[${event.id}] Batch publish failed: ${errorMessage}`);
+      const outcome: PublishOutcome = {
+        status: 'failed',
+        relays: [],
+      };
       return {
         eventId: event.id,
-        outcome: {
-          status: 'failed',
-          relays: [],
-        } as PublishOutcome,
+        outcome,
       };
     }
   });

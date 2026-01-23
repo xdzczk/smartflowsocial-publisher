@@ -107,9 +107,13 @@ export function validateEvent(event: unknown): Event {
     return v.parse(EventSchema, event);
   } catch (error) {
     if (error instanceof v.ValiError) {
-      const issues = error.issues.map((issue) => {
-        const path = issue.path?.map((p: { key: unknown }) => String(p.key)).join('.') ?? 'root';
-        return `${path}: ${issue.message}`;
+       
+      const issues = error.issues.map((issue: { path?: Array<{ key: unknown }>; message?: unknown }) => {
+         
+        const path = issue.path?.map((p: { key: unknown }) => String(p.key ?? '')).join('.') ?? 'root';
+         
+        const message = String(issue.message ?? '');
+        return `${path}: ${message}`;
       });
       throw new ValidationError(
         `Invalid event: ${issues.join(', ')}`,
@@ -143,9 +147,13 @@ export function validateSignedEventSchema(event: unknown): SignedEvent {
       throw error;
     }
     if (error instanceof v.ValiError) {
-      const issues = error.issues.map((issue) => {
-        const path = issue.path?.map((p: { key: unknown }) => String(p.key)).join('.') ?? 'root';
-        return `${path}: ${issue.message}`;
+       
+      const issues = error.issues.map((issue: { path?: Array<{ key: unknown }>; message?: unknown }) => {
+         
+        const path = issue.path?.map((p: { key: unknown }) => String(p.key ?? '')).join('.') ?? 'root';
+         
+        const message = String(issue.message ?? '');
+        return `${path}: ${message}`;
       });
       throw new ValidationError(
         `Invalid signed event: ${issues.join(', ')}`,
@@ -177,14 +185,21 @@ export function validatePublishRequest(body: unknown): {
     };
   } catch (error) {
     if (error instanceof v.ValiError) {
-      const issues = error.issues.map((issue) => {
-        const path = issue.path?.map((p: { key: unknown }) => String(p.key)).join('.') ?? 'root';
-        return `${path}: ${issue.message}`;
+       
+      const issues = error.issues.map((issue: { path?: Array<{ key: unknown }>; message?: unknown }) => {
+         
+        const path = issue.path?.map((p: { key: unknown }) => String(p.key ?? '')).join('.') ?? 'root';
+         
+        const message = String(issue.message ?? '');
+        return `${path}: ${message}`;
       });
       // Determine field from first issue path
       // If path starts with 'relays', use 'relays' as the field (handles 'relays', 'relays.0', etc.)
-      const firstIssue = error.issues[0];
-      const fieldPath = firstIssue?.path?.map((p: { key: unknown }) => String(p.key)).join('.');
+       
+      const firstIssue = error.issues[0] as { path?: Array<{ key: unknown }> } | undefined;
+       
+      const fieldPath = firstIssue?.path?.map((p: { key: unknown }) => String(p.key ?? '')).join('.');
+       
       const field = fieldPath?.startsWith('relays') ? 'relays' : 'body';
       throw new ValidationError(
         `Invalid publish request: ${issues.join(', ')}`,
@@ -214,9 +229,13 @@ export function validateProfileRequest(body: unknown): {
     };
   } catch (error) {
     if (error instanceof v.ValiError) {
-      const issues = error.issues.map((issue) => {
-        const path = issue.path?.map((p: { key: unknown }) => String(p.key)).join('.') ?? 'root';
-        return `${path}: ${issue.message}`;
+       
+      const issues = error.issues.map((issue: { path?: Array<{ key: unknown }>; message?: unknown }) => {
+         
+        const path = issue.path?.map((p: { key: unknown }) => String(p.key ?? '')).join('.') ?? 'root';
+         
+        const message = String(issue.message ?? '');
+        return `${path}: ${message}`;
       });
       throw new ValidationError(
         `Invalid profile request: ${issues.join(', ')}`,
@@ -239,7 +258,8 @@ export function validateRelayUrl(url: unknown): string {
     return v.parse(RelayUrlSchema, url);
   } catch (error) {
     if (error instanceof v.ValiError) {
-      const issues = error.issues.map((issue) => issue.message).join(', ');
+       
+      const issues = error.issues.map((issue: { message?: unknown }) => String(issue.message ?? '')).join(', ');
       throw new ValidationError(`Invalid relay URL: ${issues}`, 'relay', {
         url: String(url),
       });

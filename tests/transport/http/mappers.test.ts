@@ -115,10 +115,10 @@ describe('HTTP Mappers', () => {
 
       const response = mapPublishOutcomeToResponse(outcome);
       expect(response.results).toHaveLength(2);
-      expect(response.results[0].ok).toBe(true);
-      expect(response.results[0].latencyMs).toBe(100);
-      expect(response.results[1].ok).toBe(true);
-      expect(response.results[1].latencyMs).toBe(150);
+      expect(response.results[0]?.ok).toBe(true);
+      expect(response.results[0]?.latencyMs).toBe(100);
+      expect(response.results[1]?.ok).toBe(true);
+      expect(response.results[1]?.latencyMs).toBe(150);
     });
 
     it('should map partial outcome', () => {
@@ -134,9 +134,9 @@ describe('HTTP Mappers', () => {
 
       const response = mapPublishOutcomeToResponse(outcome);
       expect(response.results).toHaveLength(2);
-      expect(response.results[0].ok).toBe(true);
-      expect(response.results[1].ok).toBe(false);
-      expect(response.results[1].error).toBe('TIMEOUT');
+      expect(response.results[0]?.ok).toBe(true);
+      expect(response.results[1]?.ok).toBe(false);
+      expect(response.results[1]?.error).toBe('TIMEOUT');
     });
 
     it('should map failed outcome', () => {
@@ -151,8 +151,8 @@ describe('HTTP Mappers', () => {
 
       const response = mapPublishOutcomeToResponse(outcome);
       expect(response.results).toHaveLength(1);
-      expect(response.results[0].ok).toBe(false);
-      expect(response.results[0].error).toBe('Connection failed');
+      expect(response.results[0]?.ok).toBe(false);
+      expect(response.results[0]?.error).toBe('Connection failed');
     });
   });
 
