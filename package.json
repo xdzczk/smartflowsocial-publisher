@@ -30,8 +30,16 @@
     "wrangler": "^3.114.17"
   },
   "private": true,
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild",
+      "workerd",
+      "sharp"
+    ]
+  },
   "scripts": {
     "prepare": "husky",
+    "build": "pnpm run typecheck && wrangler deploy --dry-run",
     "start": "wrangler dev",
     "deploy": "wrangler deploy",
     "typecheck": "tsc --noEmit",
