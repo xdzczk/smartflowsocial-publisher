@@ -5,6 +5,7 @@ This directory contains security-focused tests that validate the application's s
 ## Test Coverage
 
 ### Input Validation (`input-validation.test.ts`)
+
 - Required field validation
 - Type validation
 - Format validation
@@ -13,6 +14,7 @@ This directory contains security-focused tests that validate the application's s
 - UTF-8 encoding validation
 
 ### Authentication (`authentication.test.ts`)
+
 - API token validation
 - Missing token handling
 - Invalid token handling
@@ -20,6 +22,7 @@ This directory contains security-focused tests that validate the application's s
 - Health endpoint exemption
 
 ### Rate Limiting (`rate-limiting.test.ts`)
+
 - Sliding window algorithm
 - Request counting
 - Window reset behavior
@@ -27,6 +30,7 @@ This directory contains security-focused tests that validate the application's s
 - Per-client tracking (IP and API token)
 
 ### Replay Protection (`replay-protection.test.ts`)
+
 - Event ID tracking
 - Duplicate detection
 - TTL expiration
@@ -34,6 +38,7 @@ This directory contains security-focused tests that validate the application's s
 - Fail-open behavior
 
 ### XSS Prevention (`xss-prevention.test.ts`)
+
 - Content sanitization
 - HTML entity encoding
 - Script tag detection
@@ -41,6 +46,7 @@ This directory contains security-focused tests that validate the application's s
 - UTF-8 validation
 
 ### Request Size Limits (`request-size-limits.test.ts`)
+
 - Single request size limits (1MB)
 - Batch request size limits (10MB)
 - Early rejection
