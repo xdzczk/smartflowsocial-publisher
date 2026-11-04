@@ -18,7 +18,7 @@ jobs:
       - name: Setup pnpm
         uses: pnpm/action-setup@v2
         with:
-          version: 10
+          version: 10.27.0
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -40,6 +40,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Check PR title
+        if: github.actor != 'dependabot[bot]'
         uses: amannn/action-semantic-pull-request@v5
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

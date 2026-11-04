@@ -3,3 +3,4 @@ build
 .wrangler
 *.log
 *.tsbuildinfo
+pnpm-lock.yaml
