@@ -115,19 +115,28 @@ describe('sanitizer', () => {
     });
 
     it('should accept string tag elements', () => {
-      const tags = [['p', 'pubkey1'], ['e', 'event-id']];
+      const tags = [
+        ['p', 'pubkey1'],
+        ['e', 'event-id'],
+      ];
       const result = sanitizeTags(tags);
       expect(result).toEqual(tags);
     });
 
     it('should accept number tag elements', () => {
-      const tags = [['expiration', 1234567890], ['p', 'pubkey']];
+      const tags = [
+        ['expiration', 1234567890],
+        ['p', 'pubkey'],
+      ];
       const result = sanitizeTags(tags);
       expect(result).toEqual(tags);
     });
 
     it('should accept mixed string and number tag elements', () => {
-      const tags = [['p', 'pubkey1'], ['expiration', 1234567890]];
+      const tags = [
+        ['p', 'pubkey1'],
+        ['expiration', 1234567890],
+      ];
       const result = sanitizeTags(tags);
       expect(result).toEqual(tags);
     });
@@ -139,7 +148,10 @@ describe('sanitizer', () => {
     });
 
     it('should validate UTF-8 encoding for string tag elements', () => {
-      const tags = [['p', 'pubkey1'], ['content', 'Hello, 世界!']];
+      const tags = [
+        ['p', 'pubkey1'],
+        ['content', 'Hello, 世界!'],
+      ];
       const result = sanitizeTags(tags);
       expect(result).toEqual(tags);
     });
@@ -149,7 +161,7 @@ describe('sanitizer', () => {
         ['p', 'pubkey1'],
         ['invalid', {}], // Invalid at index 1
       ] as unknown as unknown[][];
-      
+
       expect(() => sanitizeTags(tags)).toThrow(/\[1\]/);
     });
   });
@@ -165,8 +177,12 @@ describe('sanitizer', () => {
     });
 
     it('should reject non-object event', () => {
-      expect(() => sanitizeEvent(null as unknown as { content: string; tags: unknown[][] })).toThrow(EVENT_MUST_BE_OBJECT);
-      expect(() => sanitizeEvent('string' as unknown as { content: string; tags: unknown[][] })).toThrow(EVENT_MUST_BE_OBJECT);
+      expect(() =>
+        sanitizeEvent(null as unknown as { content: string; tags: unknown[][] })
+      ).toThrow(EVENT_MUST_BE_OBJECT);
+      expect(() =>
+        sanitizeEvent('string' as unknown as { content: string; tags: unknown[][] })
+      ).toThrow(EVENT_MUST_BE_OBJECT);
     });
 
     it('should reject event with non-string content', () => {
@@ -188,7 +204,10 @@ describe('sanitizer', () => {
     it('should sanitize both content and tags', () => {
       const event = {
         content: HELLO_WORLD,
-        tags: [['p', 'pubkey1'], ['e', 'event-id']],
+        tags: [
+          ['p', 'pubkey1'],
+          ['e', 'event-id'],
+        ],
       };
       const result = sanitizeEvent(event);
       expect(result.content).toBe(event.content);
