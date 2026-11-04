@@ -34,13 +34,13 @@ async function publishWithEarlyReturn(
   const results: RelayResult[] = [];
   const pendingPromises = new Map<RelayUrl, Promise<RelayResult>>();
   const executing = new Set<Promise<RelayResult>>();
-  
+
   // Helper to start a publish for a relay
   const startPublish = (relay: Relay): void => {
     if (abortController.signal.aborted) {
       return;
     }
-    
+
     const publishPromise = publishToRelay(
       relay,
       event,
@@ -49,34 +49,36 @@ async function publishWithEarlyReturn(
       abortController.signal,
       metrics
     );
-    
+
     pendingPromises.set(relay.url, publishPromise);
-    
+
     // Wrap the promise to handle result processing and cleanup
     // eslint-disable-next-line promise/prefer-await-to-then -- Promise chain needed for cleanup logic
     const wrappedPromise = publishPromise.then((result) => {
       results.push(result);
       pendingPromises.delete(relay.url);
-      
+
       onResult(result);
-      
+
       // Removed abort logic - remaining publishes will continue in background
-      
+
       return result;
     });
-    
+
     // Clean up from executing set when done
     // eslint-disable-next-line promise/prefer-await-to-then -- Cleanup chain needed
-    wrappedPromise.finally(() => {
-      executing.delete(wrappedPromise);
-      // eslint-disable-next-line promise/prefer-await-to-then -- Error handling in cleanup
-    }).catch(() => {
-      // Ignore errors in cleanup
-    });
-    
+    wrappedPromise
+      .finally(() => {
+        executing.delete(wrappedPromise);
+        // eslint-disable-next-line promise/prefer-await-to-then -- Error handling in cleanup
+      })
+      .catch(() => {
+        // Ignore errors in cleanup
+      });
+
     executing.add(wrappedPromise);
   };
-  
+
   // Start publishes with concurrency limit
   let relayIndex = 0;
   while (relayIndex < relays.length && !abortController.signal.aborted) {
@@ -87,9 +89,9 @@ async function publishWithEarlyReturn(
       await Promise.race(executing);
       // Clean up: settled promises are automatically removed in their finally block
     }
-    
+
     // Removed early break - start all publishes regardless of success count
-    
+
     // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- Signal can be aborted during loop
     if (!abortController.signal.aborted) {
       const relay = relays[relayIndex];
@@ -99,14 +101,14 @@ async function publishWithEarlyReturn(
       }
     }
   }
-  
+
   // Wait for all started publishes to complete
   // Standard mode waits for all relays to ensure complete results in the response
   // This ensures the HTTP response includes all results from all started publishes
   while (executing.size > 0 && !abortController.signal.aborted) {
     await Promise.race(executing);
   }
-  
+
   // Wait for any remaining promises that were already started
   // This is a safety check to ensure we have all results before returning
   // pendingPromises should be empty by now (cleared when wrapped promises complete),
@@ -114,7 +116,7 @@ async function publishWithEarlyReturn(
   if (pendingPromises.size > 0) {
     await Promise.all(Array.from(pendingPromises.values()));
   }
-  
+
   // Verify we have results for all relays that were started
   // This ensures we don't return early with incomplete results
   return results;
@@ -122,19 +124,19 @@ async function publishWithEarlyReturn(
 
 /**
  * Publishes a signed event to multiple relays with concurrency control and timeout handling
- * 
+ *
  * This function:
  * - Publishes to all relays concurrently (up to policy.relayConcurrency limit)
  * - Enforces per-relay and overall timeouts
  * - Returns structured outcome classifying success/partial/failed based on policy.minSuccessRelays
  * - Tracks latency for each relay operation
- * 
+ *
  * @param event The signed Nostr event to publish
  * @param relays Array of relay adapters to publish to
  * @param policy Publish policy with concurrency, timeout, and success criteria
  * @param logger Logger instance for observability
  * @returns Promise resolving to publish outcome with per-relay results
- * 
+ *
  * @example
  * ```typescript
  * const outcome = await publishSignedEvent(event, relays, defaultPolicy, logger);
@@ -191,7 +193,6 @@ function addFilteredOutResults(
     manager.recordFailure(relayUrl);
   }
 }
-
 
 export async function publishSignedEvent(
   event: SignedEvent,
@@ -284,7 +285,7 @@ export async function publishSignedEvent(
     if (elapsed >= WORKER_TIMEOUT_WARNING_MS) {
       logger.warn(
         `[${eventId}] Operation approaching worker timeout limit (${WORKER_TIMEOUT_MS}ms). ` +
-        `Elapsed: ${elapsed}ms. Consider reducing overallTimeoutMs or relay count.`
+          `Elapsed: ${elapsed}ms. Consider reducing overallTimeoutMs or relay count.`
       );
       if (metrics) {
         metrics.increment('publish.worker_timeout_warning', 1, { eventId });
@@ -330,10 +331,10 @@ export async function publishSignedEvent(
   const filteredOutRelayUrls = relays
     .filter((r) => !attemptedRelayUrlSet.has(r.url))
     .map((r) => r.url);
-  
+
   // Add timeout results for attempted relays that didn't complete
   addTimeoutResultsForRelays(attemptedRelayUrlSet, results, elapsed, policy, healthCheckManager);
-  
+
   // Add results for filtered-out (unhealthy) relays
   addFilteredOutResults(filteredOutRelayUrls, results, healthCheckManager);
 
@@ -415,14 +416,14 @@ export async function publishSignedEventStreaming(
   const processPublishResult = (result: RelayResult): void => {
     results.push(result);
     completedRelays.add(result.relay);
-    
+
     // Update health status
     if (result.status === 'success') {
       healthCheckManager?.recordSuccess(result.relay);
     } else {
       healthCheckManager?.recordFailure(result.relay);
     }
-    
+
     // Stream the result via callback
     onResult(result);
   };
@@ -459,7 +460,7 @@ export async function publishSignedEventStreaming(
     if (elapsed >= WORKER_TIMEOUT_WARNING_MS) {
       logger.warn(
         `[${eventId}] Operation approaching worker timeout limit (${WORKER_TIMEOUT_MS}ms). ` +
-        `Elapsed: ${elapsed}ms. Consider reducing overallTimeoutMs or relay count.`
+          `Elapsed: ${elapsed}ms. Consider reducing overallTimeoutMs or relay count.`
       );
       if (metrics) {
         metrics.increment('publish.worker_timeout_warning', 1, { eventId });
@@ -486,7 +487,9 @@ export async function publishSignedEventStreaming(
   }
 
   const elapsed = Date.now() - startTime;
-  logger.info(`[${eventId}] Streaming publish completed in ${elapsed}ms, ${results.length} results`);
+  logger.info(
+    `[${eventId}] Streaming publish completed in ${elapsed}ms, ${results.length} results`
+  );
 
   // Record metrics
   if (metrics) {
@@ -503,7 +506,7 @@ export async function publishSignedEventStreaming(
   const filteredOutRelayUrls = relays
     .filter((r) => !attemptedRelayUrlSet.has(r.url))
     .map((r) => r.url);
-  
+
   addTimeoutResultsForRelays(attemptedRelayUrlSet, results, elapsed, policy, healthCheckManager);
   addFilteredOutResults(filteredOutRelayUrls, results, healthCheckManager);
 
