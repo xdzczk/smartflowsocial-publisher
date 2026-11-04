@@ -61,12 +61,7 @@ async function refreshProfileCache(
 ): Promise<void> {
   try {
     const relays = relayUrls.map((url) => new NostrRelayAdapter(url));
-    const result = await fetchProfile(
-      normalizedPubkey,
-      relays,
-      defaultProfilePolicy,
-      logger
-    );
+    const result = await fetchProfile(normalizedPubkey, relays, defaultProfilePolicy, logger);
     if (result.event) {
       await env.PROFILES.put(normalizedPubkey, JSON.stringify(result.event), {
         metadata: { createdAt: Date.now() },
@@ -181,7 +176,7 @@ async function handleSSEPublish(
       } catch (error) {
         logger.error('Error in SSE publish:', error);
         const { response } = mapErrorToResponse(error);
-        
+
         // Send error event
         const errorEvent = formatSSEMessage({
           type: 'error',
@@ -231,7 +226,7 @@ export async function publishHandler(
 
   try {
     metrics.increment(METRIC_HTTP_REQUESTS, METRIC_INCREMENT_VALUE, { endpoint: ENDPOINT_PUBLISH });
-    
+
     // Validate request size and read body
     const sizeCheck = await validateAndReadRequestBody(request, MAX_REQUEST_SIZE);
     if (!sizeCheck.success) {
@@ -250,11 +245,7 @@ export async function publishHandler(
       body = JSON.parse(sizeCheck.bodyText);
     } catch (error) {
       if (error instanceof SyntaxError) {
-        throw new ValidationError(
-          INVALID_JSON_MSG,
-          'body',
-          { originalError: error.message }
-        );
+        throw new ValidationError(INVALID_JSON_MSG, 'body', { originalError: error.message });
       }
       throw error;
     }
@@ -276,40 +267,30 @@ export async function publishHandler(
     const policy = selectPolicy(url.searchParams);
 
     // Check if SSE streaming is requested
-    const streamMode = url.searchParams.get('stream') === 'true' || 
-                       request.headers.get('Accept')?.includes('text/event-stream');
+    const streamMode =
+      url.searchParams.get('stream') === 'true' ||
+      request.headers.get('Accept')?.includes('text/event-stream');
 
     // Create relay adapters
     const relays = relayUrls.map((url) => new NostrRelayAdapter(url));
 
     // Handle SSE streaming mode
     if (streamMode) {
-      return handleSSEPublish(
-        event,
-        relays,
-        policy,
-        logger,
-        metrics,
-        correlationId,
-        startTime
-      );
+      return handleSSEPublish(event, relays, policy, logger, metrics, correlationId, startTime);
     }
 
     // Standard non-streaming mode
     // Publish using core engine
     // event is already validated as SignedEvent by parsePublishRequest
-    const outcome = await publishSignedEvent(
-      event,
-      relays,
-      policy,
-      logger,
-      metrics
-    );
+    const outcome = await publishSignedEvent(event, relays, policy, logger, metrics);
 
     // Map outcome to HTTP response
     const response = mapPublishOutcomeToResponse(outcome);
 
-    metrics.increment(METRIC_HTTP_RESPONSES, METRIC_INCREMENT_VALUE, { endpoint: ENDPOINT_PUBLISH, status: STATUS_200 });
+    metrics.increment(METRIC_HTTP_RESPONSES, METRIC_INCREMENT_VALUE, {
+      endpoint: ENDPOINT_PUBLISH,
+      status: STATUS_200,
+    });
 
     const headers = createResponseHeaders(correlationId, startTime, {
       'Content-Type': CONTENT_TYPE_JSON,
@@ -359,10 +340,7 @@ export async function publishHandler(
 async function validateAndReadRequestBody(
   request: Request,
   maxSize: number
-): Promise<
-  | { success: true; bodyText: string }
-  | { success: false; response: Response }
-> {
+): Promise<{ success: true; bodyText: string } | { success: false; response: Response }> {
   // Clone request to read body without consuming original
   const clonedRequest = request.clone();
   const bodyText = await clonedRequest.text();
@@ -406,9 +384,7 @@ async function validateAndNormalizeProfileRequest(
     validatedRequest = validateProfileRequest(body);
   } catch (error) {
     const { response, status } = mapErrorToResponse(
-      error instanceof ValidationError
-        ? error
-        : new ValidationError('Invalid request', 'body')
+      error instanceof ValidationError ? error : new ValidationError('Invalid request', 'body')
     );
     const headers = createResponseHeaders(correlationId, startTime, {
       'Content-Type': CONTENT_TYPE_JSON,
@@ -455,7 +431,6 @@ async function validateAndNormalizeProfileRequest(
   return { success: true, relayUrls, normalizedPubkey };
 }
 
-
 export async function profileHandler(
   request: Request,
   env: Env,
@@ -471,7 +446,7 @@ export async function profileHandler(
 
   try {
     metrics.increment('http.requests', 1, { endpoint: 'profile' });
-    
+
     // Validate request size and read body
     const sizeCheck = await validateAndReadRequestBody(request, MAX_REQUEST_SIZE);
     if (!sizeCheck.success) {
@@ -507,7 +482,11 @@ export async function profileHandler(
     }
 
     // Validate and normalize profile request
-    const validationResult = await validateAndNormalizeProfileRequest(body, correlationId, startTime);
+    const validationResult = await validateAndNormalizeProfileRequest(
+      body,
+      correlationId,
+      startTime
+    );
     if (!validationResult.success) {
       return validationResult.response;
     }
@@ -515,7 +494,9 @@ export async function profileHandler(
     const { relayUrls, normalizedPubkey } = validationResult;
 
     // Cache functions
-    const getCache = async (key: string): Promise<{
+    const getCache = async (
+      key: string
+    ): Promise<{
       value: string | null;
       metadata: { createdAt: number } | null;
     }> => {
@@ -532,7 +513,11 @@ export async function profileHandler(
         ctx.waitUntil(refreshProfileCache(normalizedPubkey, relayUrls, env, logger));
       }
 
-      metrics.increment(METRIC_HTTP_RESPONSES, METRIC_INCREMENT_VALUE, { endpoint: 'profile', status: STATUS_200, cached: 'true' });
+      metrics.increment(METRIC_HTTP_RESPONSES, METRIC_INCREMENT_VALUE, {
+        endpoint: 'profile',
+        status: STATUS_200,
+        cached: 'true',
+      });
       const headers = createResponseHeaders(correlationId, startTime, {
         'content-type': 'application/json;charset=UTF-8',
       });
@@ -545,7 +530,11 @@ export async function profileHandler(
     // Not in cache - fetch asynchronously
     ctx.waitUntil(refreshProfileCache(normalizedPubkey, relayUrls, env, logger));
 
-    metrics.increment(METRIC_HTTP_RESPONSES, METRIC_INCREMENT_VALUE, { endpoint: 'profile', status: '202', cached: 'false' });
+    metrics.increment(METRIC_HTTP_RESPONSES, METRIC_INCREMENT_VALUE, {
+      endpoint: 'profile',
+      status: '202',
+      cached: 'false',
+    });
     const headers = createResponseHeaders(correlationId, startTime, {
       'content-type': 'application/json;charset=UTF-8',
     });
@@ -559,7 +548,10 @@ export async function profileHandler(
     if (correlationId) {
       response.details = { ...response.details, correlationId };
     }
-    metrics.increment(METRIC_HTTP_RESPONSES, METRIC_INCREMENT_VALUE, { endpoint: 'profile', status: STATUS_500 });
+    metrics.increment(METRIC_HTTP_RESPONSES, METRIC_INCREMENT_VALUE, {
+      endpoint: 'profile',
+      status: STATUS_500,
+    });
     const headers = createResponseHeaders(correlationId, startTime, {
       'Content-Type': CONTENT_TYPE_JSON,
     });
@@ -582,10 +574,7 @@ function validateBatchRequest(body: unknown): { events: unknown[]; relays: strin
     !('relays' in body) ||
     !Array.isArray((body as { relays: unknown }).relays)
   ) {
-    throw new ValidationError(
-      'Invalid batch request: events and relays must be arrays',
-      'body'
-    );
+    throw new ValidationError('Invalid batch request: events and relays must be arrays', 'body');
   }
 
   const events = (body as { events: unknown[] }).events;
@@ -670,11 +659,9 @@ export async function batchPublishHandler(
       body = JSON.parse(sizeCheck.bodyText);
     } catch (error) {
       if (error instanceof SyntaxError) {
-        throw new ValidationError(
-          INVALID_JSON_MSG,
-          'body',
-          { originalError: error instanceof Error ? error.message : String(error) }
-        );
+        throw new ValidationError(INVALID_JSON_MSG, 'body', {
+          originalError: error instanceof Error ? error.message : String(error),
+        });
       }
       throw error;
     }
@@ -689,7 +676,7 @@ export async function batchPublishHandler(
     const replayChecks = await Promise.all(
       signedEvents.map((event) => checkAndRecordEvent(event.id, env.PROFILES))
     );
-    
+
     // Find any replay events
     const replayEvents = signedEvents.filter((_, index) => replayChecks[index]);
     if (replayEvents.length > 0) {
@@ -697,9 +684,9 @@ export async function batchPublishHandler(
       throw new ReplayError(
         `Batch contains ${replayEvents.length} event(s) that have already been published: ${eventIds}`,
         replayEvents[0]?.id,
-        { 
+        {
           replayCount: replayEvents.length,
-          replayEventIds: replayEvents.map((e) => e.id)
+          replayEventIds: replayEvents.map((e) => e.id),
         }
       );
     }
@@ -720,7 +707,10 @@ export async function batchPublishHandler(
     // Publish batch
     const batchResult = await publishBatch(signedEvents, relays, policy, logger, metrics);
 
-    metrics.increment(METRIC_HTTP_RESPONSES, METRIC_INCREMENT_VALUE, { endpoint: 'batch', status: STATUS_200 });
+    metrics.increment(METRIC_HTTP_RESPONSES, METRIC_INCREMENT_VALUE, {
+      endpoint: 'batch',
+      status: STATUS_200,
+    });
 
     const headers = createResponseHeaders(correlationId, startTime, {
       'Content-Type': CONTENT_TYPE_JSON,
