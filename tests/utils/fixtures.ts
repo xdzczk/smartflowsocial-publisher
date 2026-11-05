@@ -5,13 +5,13 @@ import type { PublishOutcome, RelayResult, RelayUrl, SignedEvent } from '../../s
 /**
  * Creates a valid signed event for testing
  */
- 
+
 export function createSignedEvent(overrides?: Partial<Event>): SignedEvent {
   // Generate valid 64-char hex strings for id and pubkey, 128-char for sig
   const id = 'a'.repeat(64);
   const pubkey = 'b'.repeat(64);
   const sig = 'c'.repeat(128);
-  
+
   const baseEvent: Event = {
     id,
     pubkey,
@@ -28,12 +28,12 @@ export function createSignedEvent(overrides?: Partial<Event>): SignedEvent {
 /**
  * Creates an unsigned event for testing
  */
- 
+
 export function createUnsignedEvent(overrides?: Partial<Event>): Event {
   // Generate valid 64-char hex strings for id and pubkey
   const id = 'a'.repeat(64);
   const pubkey = 'b'.repeat(64);
-  
+
   const baseEvent: Event = {
     id,
     pubkey,

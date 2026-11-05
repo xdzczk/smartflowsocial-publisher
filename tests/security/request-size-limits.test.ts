@@ -93,7 +93,7 @@ describe('Request Size Limits: DoS Prevention', () => {
       const content = 'x'.repeat(500 * 1024);
       const jsonPayload = JSON.stringify({ content, tags: [] });
       const byteLength = new TextEncoder().encode(jsonPayload).length;
-      
+
       // JSON overhead is typically small, but should be accounted for
       expect(byteLength).toBeGreaterThan(content.length);
       expect(byteLength).toBeLessThanOrEqual(MAX_REQUEST_SIZE);
@@ -106,7 +106,7 @@ describe('Request Size Limits: DoS Prevention', () => {
       }));
       const jsonPayload = JSON.stringify({ events: largeArray });
       const byteLength = new TextEncoder().encode(jsonPayload).length;
-      
+
       // Should be within batch request limit
       expect(byteLength).toBeLessThanOrEqual(MAX_BATCH_REQUEST_SIZE);
     });

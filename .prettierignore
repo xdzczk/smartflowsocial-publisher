@@ -4,3 +4,4 @@ build
 *.log
 *.tsbuildinfo
 pnpm-lock.yaml
+eslint-report.json

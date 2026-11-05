@@ -63,7 +63,7 @@ export function sanitizeContent(content: string): string {
   // 1. Nostr events are typically JSON-encoded when transmitted
   // 2. Content may contain markdown, plain text, or other formats
   // 3. The client application should handle rendering safely
-  // 
+  //
   // However, if you're storing content in HTML context, you should
   // use encodeHTMLEntities() at render time, not at storage time.
   //
@@ -120,9 +120,7 @@ export function sanitizeTags(tags: unknown[][]): unknown[][] {
 
       // Validate UTF-8 encoding for strings
       if (typeof item === 'string' && !isValidUTF8(item)) {
-        throw new Error(
-          `Tag element at [${tagIndex}][${itemIndex}] must be valid UTF-8 encoded`
-        );
+        throw new Error(`Tag element at [${tagIndex}][${itemIndex}] must be valid UTF-8 encoded`);
       }
 
       // Return original value (preserve type: string or number)
@@ -137,10 +135,10 @@ export function sanitizeTags(tags: unknown[][]): unknown[][] {
  * @returns Validated and sanitized event
  * @throws {Error} if event is invalid
  */
-export function sanitizeEvent(event: {
+export function sanitizeEvent(event: { content: string; tags: unknown[][] }): {
   content: string;
   tags: unknown[][];
-}): { content: string; tags: unknown[][] } {
+} {
   // Validate event structure
   // Note: typeof null === 'object' in JavaScript, so we need explicit null check
   // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- null check needed for runtime validation

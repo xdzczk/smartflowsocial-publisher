@@ -27,14 +27,17 @@ Publishes a single signed Nostr event to multiple relays.
 #### Request
 
 **Headers:**
+
 - `Content-Type: application/json`
 - `API-TOKEN: <token>` (optional, required if API_TOKEN env var is set)
 - `X-Request-ID: <id>` (optional, for request tracking)
 
 **Query Parameters:**
+
 - `policy` (optional): `conservative` | `aggressive` | `default`
 
 **Body:**
+
 ```json
 {
   "relays": ["wss://relay.damus.io", "wss://relay.snort.social"],
@@ -52,6 +55,7 @@ Publishes a single signed Nostr event to multiple relays.
 ```
 
 **Field Descriptions:**
+
 - `relays` (required, array): Array of relay WebSocket URLs. Maximum 12 relays. URLs are normalized (trimmed, deduplicated, `wss://` scheme enforced).
 - `event` (required, object): Signed Nostr event. Must include `id`, `pubkey`, `kind`, `sig`, `created_at`, `content`, `tags`.
 - `correlationId` (optional, string): Correlation ID for request tracking.
@@ -59,6 +63,7 @@ Publishes a single signed Nostr event to multiple relays.
 #### Response
 
 **Success (200 OK):**
+
 ```json
 {
   "results": [
@@ -78,6 +83,7 @@ Publishes a single signed Nostr event to multiple relays.
 ```
 
 **Error (400 Bad Request):**
+
 ```json
 {
   "error": "Invalid publish request: events must be an array",
@@ -87,6 +93,7 @@ Publishes a single signed Nostr event to multiple relays.
 ```
 
 **Error (409 Conflict - Replay Protection):**
+
 ```json
 {
   "error": "Event abc123... has already been published. Replay protection prevents duplicate publishing.",
@@ -98,6 +105,7 @@ Publishes a single signed Nostr event to multiple relays.
 ```
 
 **Error (429 Too Many Requests):**
+
 ```json
 {
   "error": "Rate limit exceeded",
@@ -110,21 +118,21 @@ Publishes a single signed Nostr event to multiple relays.
 
 ### Request Headers
 
-| Header | Required | Description | Example |
-|--------|----------|-------------|---------|
-| `Content-Type` | Yes | Must be `application/json` | `Content-Type: application/json` |
-| `API-TOKEN` | Conditional | Required if `API_TOKEN` env var is set | `API-TOKEN: your-secret-token` |
-| `X-Request-ID` | No | Correlation ID for request tracking | `X-Request-ID: req-12345` |
-| `X-Correlation-ID` | No | Alternative correlation ID header | `X-Correlation-ID: req-12345` |
+| Header             | Required    | Description                            | Example                          |
+| ------------------ | ----------- | -------------------------------------- | -------------------------------- |
+| `Content-Type`     | Yes         | Must be `application/json`             | `Content-Type: application/json` |
+| `API-TOKEN`        | Conditional | Required if `API_TOKEN` env var is set | `API-TOKEN: your-secret-token`   |
+| `X-Request-ID`     | No          | Correlation ID for request tracking    | `X-Request-ID: req-12345`        |
+| `X-Correlation-ID` | No          | Alternative correlation ID header      | `X-Correlation-ID: req-12345`    |
 
 ### Response Headers
 
-| Header | Description | Example |
-|--------|-------------|---------|
-| `X-Request-ID` | Correlation ID for request tracking (echoed from request or generated) | `X-Request-ID: req-12345` |
-| `X-Response-Time` | Response time in milliseconds | `X-Response-Time: 145ms` |
-| `Content-Type` | Response content type (always `application/json`) | `Content-Type: application/json` |
-| `Retry-After` | Seconds until rate limit resets (only on 429 responses) | `Retry-After: 60` |
+| Header            | Description                                                            | Example                          |
+| ----------------- | ---------------------------------------------------------------------- | -------------------------------- |
+| `X-Request-ID`    | Correlation ID for request tracking (echoed from request or generated) | `X-Request-ID: req-12345`        |
+| `X-Response-Time` | Response time in milliseconds                                          | `X-Response-Time: 145ms`         |
+| `Content-Type`    | Response content type (always `application/json`)                      | `Content-Type: application/json` |
+| `Retry-After`     | Seconds until rate limit resets (only on 429 responses)                | `Retry-After: 60`                |
 
 ### Header Validation
 
@@ -138,12 +146,14 @@ To enable Server-Sent Events (SSE) streaming, add `?stream=true` to the query st
 
 **Streaming Response:**
 The response is sent as Server-Sent Events with the following event types:
+
 - `result`: Individual relay publish result
 - `progress`: Progress update with completion count
 - `complete`: Final outcome with all results
 - `error`: Error event if publishing fails
 
 **Example SSE Response:**
+
 ```
 event: result
 data: {"relay":"wss://relay.damus.io","ok":true,"latencyMs":145}
@@ -181,14 +191,17 @@ Publishes multiple events to multiple relays in a single request.
 #### Request
 
 **Headers:**
+
 - `Content-Type: application/json`
 - `API-TOKEN: <token>` (optional)
 - `X-Request-ID: <id>` (optional)
 
 **Query Parameters:**
+
 - `policy` (optional): `conservative` | `aggressive` | `default`
 
 **Body:**
+
 ```json
 {
   "events": [
@@ -216,6 +229,7 @@ Publishes multiple events to multiple relays in a single request.
 ```
 
 **Field Descriptions:**
+
 - `events` (required, array): Array of signed Nostr events. Maximum 200 events per batch.
 - `relays` (required, array): Array of relay WebSocket URLs. Same rules as `/publish`.
 
@@ -224,6 +238,7 @@ Publishes multiple events to multiple relays in a single request.
 #### Response
 
 **Success (200 OK):**
+
 ```json
 {
   "results": [
@@ -268,6 +283,7 @@ Publishes multiple events to multiple relays in a single request.
 ```
 
 **Error (400 Bad Request):**
+
 ```json
 {
   "error": "Maximum 200 events per batch request, received 250",
@@ -292,11 +308,13 @@ Fetches a Nostr profile (kind 0 event) for a given pubkey.
 #### Request
 
 **Headers:**
+
 - `Content-Type: application/json`
 - `API-TOKEN: <token>` (optional)
 - `X-Request-ID: <id>` (optional)
 
 **Body:**
+
 ```json
 {
   "relays": ["wss://relay.damus.io", "wss://relay.snort.social"],
@@ -305,6 +323,7 @@ Fetches a Nostr profile (kind 0 event) for a given pubkey.
 ```
 
 **Field Descriptions:**
+
 - `relays` (required, array): Array of relay WebSocket URLs.
 - `pubkey` (required, string): Pubkey in hex or bech32 (npub) format.
 
@@ -331,6 +350,7 @@ The `content` field contains a JSON string with profile metadata (name, about, p
 Returns empty body. Profile is fetched asynchronously and cached for future requests. Retry the request after a few seconds to get the cached profile.
 
 **Error (400 Bad Request):**
+
 ```json
 {
   "error": "Invalid pubkey format",
@@ -352,6 +372,7 @@ No body required.
 #### Response
 
 **Success (200 OK):**
+
 ```json
 {
   "status": "ok",
@@ -371,14 +392,14 @@ No body required.
 
 ## Error Codes
 
-| Code | HTTP Status | Description | Troubleshooting | Retry Recommended |
-|------|-------------|-------------|-----------------|-------------------|
-| `VALIDATION_ERROR` | 400 | Request validation failed | Check request format, required fields, and data types. See error message for specific field issues. | No - fix request first |
-| `REPLAY_ERROR` | 409 | Event has already been published | The event ID has been seen within the last 24 hours. Replay protection prevents duplicate publishing. | No - event already published |
-| `RATE_LIMIT_EXCEEDED` | 429 | Rate limit exceeded | Wait for rate limit window to reset. Check `Retry-After` header for wait time. | Yes - after waiting |
-| `INTERNAL_ERROR` | 500 | Internal server error | Server-side issue. Check worker logs. If persistent, contact support. | Yes - with exponential backoff |
-| `CONFIGURATION_ERROR` | 500 | Server configuration error | Worker misconfigured. Check environment variables and KV bindings. | No - requires admin fix |
-| `UNKNOWN_ERROR` | 500 | Unexpected error | Unexpected server error. Check logs for details. | Yes - with exponential backoff |
+| Code                  | HTTP Status | Description                      | Troubleshooting                                                                                       | Retry Recommended              |
+| --------------------- | ----------- | -------------------------------- | ----------------------------------------------------------------------------------------------------- | ------------------------------ |
+| `VALIDATION_ERROR`    | 400         | Request validation failed        | Check request format, required fields, and data types. See error message for specific field issues.   | No - fix request first         |
+| `REPLAY_ERROR`        | 409         | Event has already been published | The event ID has been seen within the last 24 hours. Replay protection prevents duplicate publishing. | No - event already published   |
+| `RATE_LIMIT_EXCEEDED` | 429         | Rate limit exceeded              | Wait for rate limit window to reset. Check `Retry-After` header for wait time.                        | Yes - after waiting            |
+| `INTERNAL_ERROR`      | 500         | Internal server error            | Server-side issue. Check worker logs. If persistent, contact support.                                 | Yes - with exponential backoff |
+| `CONFIGURATION_ERROR` | 500         | Server configuration error       | Worker misconfigured. Check environment variables and KV bindings.                                    | No - requires admin fix        |
+| `UNKNOWN_ERROR`       | 500         | Unexpected error                 | Unexpected server error. Check logs for details.                                                      | Yes - with exponential backoff |
 
 ### Error Response Format
 
@@ -399,6 +420,7 @@ All error responses follow this structure:
 ### Common Validation Errors
 
 **Invalid Event Format:**
+
 ```json
 {
   "error": "Invalid event: id: Must be 64-character hex string",
@@ -406,9 +428,11 @@ All error responses follow this structure:
   "field": "event.id"
 }
 ```
+
 **Solution**: Ensure event `id` is exactly 64 hexadecimal characters.
 
 **Invalid Relay URL:**
+
 ```json
 {
   "error": "Invalid relay URL: Must use wss://, ws://, https://, or http:// scheme",
@@ -416,9 +440,11 @@ All error responses follow this structure:
   "field": "relays"
 }
 ```
+
 **Solution**: Use `wss://` scheme for relay URLs.
 
 **Missing Required Field:**
+
 ```json
 {
   "error": "Invalid publish request: event is required",
@@ -426,9 +452,11 @@ All error responses follow this structure:
   "field": "body"
 }
 ```
+
 **Solution**: Include all required fields in request body.
 
 **Replay Protection Error:**
+
 ```json
 {
   "error": "Event abc123... has already been published. Replay protection prevents duplicate publishing.",
@@ -438,6 +466,7 @@ All error responses follow this structure:
   }
 }
 ```
+
 **Solution**: The event has already been published within the last 24 hours. Replay protection prevents duplicate publishing to prevent abuse. If you need to republish, wait 24 hours or use a different event ID.
 
 ### Replay Protection
@@ -451,6 +480,7 @@ The service implements replay protection to prevent duplicate event publishing:
 - **Thread-Safe**: Uses KV atomic operations to handle concurrent requests
 
 **How It Works:**
+
 1. Before publishing, the service checks if the event ID exists in KV
 2. If found, the request is rejected with HTTP 409 Conflict
 3. If not found, the event ID is recorded with a 24-hour TTL
@@ -471,6 +501,7 @@ When rate limit is exceeded, the response includes a `Retry-After` header:
 ```
 
 **Headers:**
+
 - `Retry-After: 60` - Seconds until rate limit resets
 
 **Handling**: Wait for the specified time before retrying, or implement exponential backoff.
@@ -481,24 +512,26 @@ Policies control retry behavior, timeouts, and concurrency for publishing operat
 
 ### Policy Comparison
 
-| Setting | Default | Conservative | Aggressive |
-|---------|---------|--------------|-----------|
-| **Concurrency** | 8 | 4 | 12 |
-| **Per-relay timeout** | 10s | 20s | 5s |
-| **Connection timeout** | 5s | 10s | 2s |
-| **Overall timeout** | 15s | 30s | 10s |
-| **Retry attempts** | 1 | 2 | 0 |
-| **Backoff delay** | 1000ms | 2000ms | 500ms |
-| **Min success relays** | 1 | 2 | 1 |
+| Setting                | Default | Conservative | Aggressive |
+| ---------------------- | ------- | ------------ | ---------- |
+| **Concurrency**        | 8       | 4            | 12         |
+| **Per-relay timeout**  | 10s     | 20s          | 5s         |
+| **Connection timeout** | 5s      | 10s          | 2s         |
+| **Overall timeout**    | 15s     | 30s          | 10s        |
+| **Retry attempts**     | 1       | 2            | 0          |
+| **Backoff delay**      | 1000ms  | 2000ms       | 500ms      |
+| **Min success relays** | 1       | 2            | 1          |
 
 ### When to Use Each Policy
 
 **Default Policy** (Recommended for most use cases)
+
 - Balanced approach between speed and reliability
 - Good for general-purpose event publishing
 - Use when: You need reliable delivery but don't want to wait too long
 
 **Conservative Policy** (Maximum reliability)
+
 - More retries and longer timeouts
 - Requires at least 2 successful relays
 - Use when:
@@ -507,6 +540,7 @@ Policies control retry behavior, timeouts, and concurrency for publishing operat
   - You prioritize delivery over speed
 
 **Aggressive Policy** (Maximum speed)
+
 - No retries, fast timeouts
 - Higher concurrency for throughput
 - Use when:
@@ -517,6 +551,7 @@ Policies control retry behavior, timeouts, and concurrency for publishing operat
 ### Policy Details
 
 #### Default Policy
+
 - **Concurrency**: 8 concurrent publishes
 - **Per-relay timeout**: 10 seconds
 - **Connection timeout**: 5 seconds
@@ -526,6 +561,7 @@ Policies control retry behavior, timeouts, and concurrency for publishing operat
 - **Min success relays**: 1
 
 #### Conservative Policy
+
 - **Concurrency**: 4 concurrent publishes
 - **Per-relay timeout**: 20 seconds
 - **Connection timeout**: 10 seconds
@@ -535,6 +571,7 @@ Policies control retry behavior, timeouts, and concurrency for publishing operat
 - **Min success relays**: 2
 
 #### Aggressive Policy
+
 - **Concurrency**: 12 concurrent publishes
 - **Per-relay timeout**: 5 seconds
 - **Connection timeout**: 2 seconds
@@ -548,9 +585,11 @@ Policies control retry behavior, timeouts, and concurrency for publishing operat
 Rate limiting is applied per client identifier (IP address or API token).
 
 **Default Limits:**
+
 - 100 requests per 60 seconds (1 minute window)
 
 **Headers:**
+
 - `Retry-After`: Seconds until rate limit resets (on 429 responses)
 
 ## CORS
@@ -568,6 +607,7 @@ If `CORS_ENABLED=true` and `CORS_ORIGINS` is configured:
 ### Publish Event
 
 **Basic Request:**
+
 ```bash
 curl -X POST https://your-worker.workers.dev/publish \
   -H "Content-Type: application/json" \
@@ -589,6 +629,7 @@ curl -X POST https://your-worker.workers.dev/publish \
 ```
 
 **Success Response:**
+
 ```json
 {
   "results": [
@@ -607,6 +648,7 @@ curl -X POST https://your-worker.workers.dev/publish \
 ```
 
 **Partial Success Response:**
+
 ```json
 {
   "results": [
@@ -628,6 +670,7 @@ curl -X POST https://your-worker.workers.dev/publish \
 ### Batch Publish
 
 **Request:**
+
 ```bash
 curl -X POST "https://your-worker.workers.dev/batch?policy=conservative" \
   -H "Content-Type: application/json" \
@@ -658,6 +701,7 @@ curl -X POST "https://your-worker.workers.dev/batch?policy=conservative" \
 ```
 
 **Response:**
+
 ```json
 {
   "results": [
@@ -709,6 +753,7 @@ curl -X POST "https://your-worker.workers.dev/batch?policy=conservative" \
 ### Fetch Profile
 
 **Request:**
+
 ```bash
 curl -X POST https://your-worker.workers.dev/profile \
   -H "Content-Type: application/json" \
@@ -720,6 +765,7 @@ curl -X POST https://your-worker.workers.dev/profile \
 ```
 
 **Cached Response (200 OK):**
+
 ```json
 {
   "id": "profile-event-id-hex-64-chars",
@@ -738,11 +784,13 @@ Empty body. Profile is being fetched asynchronously.
 ### Health Check
 
 **Request:**
+
 ```bash
 curl https://your-worker.workers.dev/health
 ```
 
 **Response:**
+
 ```json
 {
   "status": "ok",
