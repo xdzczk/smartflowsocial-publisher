@@ -107,19 +107,18 @@ export function validateEvent(event: unknown): Event {
     return v.parse(EventSchema, event);
   } catch (error) {
     if (error instanceof v.ValiError) {
-       
-      const issues = error.issues.map((issue: { path?: Array<{ key: unknown }>; message?: unknown }) => {
-         
-        const path = issue.path?.map((p: { key: unknown }) => String(p.key ?? '')).join('.') ?? 'root';
-         
-        const message = String(issue.message ?? '');
-        return `${path}: ${message}`;
-      });
-      throw new ValidationError(
-        `Invalid event: ${issues.join(', ')}`,
-        'event',
-        { valibotIssues: error.issues }
+      const issues = error.issues.map(
+        (issue: { path?: Array<{ key: unknown }>; message?: unknown }) => {
+          const path =
+            issue.path?.map((p: { key: unknown }) => String(p.key ?? '')).join('.') ?? 'root';
+
+          const message = String(issue.message ?? '');
+          return `${path}: ${message}`;
+        }
       );
+      throw new ValidationError(`Invalid event: ${issues.join(', ')}`, 'event', {
+        valibotIssues: error.issues,
+      });
     }
     throw new ValidationError('Invalid event format', 'event');
   }
@@ -136,10 +135,7 @@ export function validateSignedEventSchema(event: unknown): SignedEvent {
     const validated = v.parse(SignedEventSchema, event) as Event;
     // Additional check for signature format (128-char hex)
     if (!/^[0-9a-fA-F]{128}$/.test(validated.sig)) {
-      throw new ValidationError(
-        'Invalid signature: must be 128-character hex string',
-        'event.sig'
-      );
+      throw new ValidationError('Invalid signature: must be 128-character hex string', 'event.sig');
     }
     return validated as SignedEvent;
   } catch (error) {
@@ -147,19 +143,18 @@ export function validateSignedEventSchema(event: unknown): SignedEvent {
       throw error;
     }
     if (error instanceof v.ValiError) {
-       
-      const issues = error.issues.map((issue: { path?: Array<{ key: unknown }>; message?: unknown }) => {
-         
-        const path = issue.path?.map((p: { key: unknown }) => String(p.key ?? '')).join('.') ?? 'root';
-         
-        const message = String(issue.message ?? '');
-        return `${path}: ${message}`;
-      });
-      throw new ValidationError(
-        `Invalid signed event: ${issues.join(', ')}`,
-        'event',
-        { valibotIssues: error.issues }
+      const issues = error.issues.map(
+        (issue: { path?: Array<{ key: unknown }>; message?: unknown }) => {
+          const path =
+            issue.path?.map((p: { key: unknown }) => String(p.key ?? '')).join('.') ?? 'root';
+
+          const message = String(issue.message ?? '');
+          return `${path}: ${message}`;
+        }
       );
+      throw new ValidationError(`Invalid signed event: ${issues.join(', ')}`, 'event', {
+        valibotIssues: error.issues,
+      });
     }
     throw new ValidationError('Invalid signed event format', 'event');
   }
@@ -178,34 +173,41 @@ export function validatePublishRequest(body: unknown): {
 } {
   try {
     const validated = v.parse(PublishRequestSchema, body);
+    if (!/^[0-9a-fA-F]{128}$/.test(validated.event.sig)) {
+      throw new ValidationError('Invalid signature: must be 128-character hex string', 'event.sig');
+    }
     return {
       relays: validated.relays,
       event: validated.event,
       correlationId: validated.correlationId,
     };
   } catch (error) {
+    if (error instanceof ValidationError) {
+      throw error;
+    }
     if (error instanceof v.ValiError) {
-       
-      const issues = error.issues.map((issue: { path?: Array<{ key: unknown }>; message?: unknown }) => {
-         
-        const path = issue.path?.map((p: { key: unknown }) => String(p.key ?? '')).join('.') ?? 'root';
-         
-        const message = String(issue.message ?? '');
-        return `${path}: ${message}`;
-      });
+      const issues = error.issues.map(
+        (issue: { path?: Array<{ key: unknown }>; message?: unknown }) => {
+          const path =
+            issue.path?.map((p: { key: unknown }) => String(p.key ?? '')).join('.') ?? 'root';
+
+          const message = String(issue.message ?? '');
+          return `${path}: ${message}`;
+        }
+      );
       // Determine field from first issue path
       // If path starts with 'relays', use 'relays' as the field (handles 'relays', 'relays.0', etc.)
-       
+
       const firstIssue = error.issues[0] as { path?: Array<{ key: unknown }> } | undefined;
-       
-      const fieldPath = firstIssue?.path?.map((p: { key: unknown }) => String(p.key ?? '')).join('.');
-       
+
+      const fieldPath = firstIssue?.path
+        ?.map((p: { key: unknown }) => String(p.key ?? ''))
+        .join('.');
+
       const field = fieldPath?.startsWith('relays') ? 'relays' : 'body';
-      throw new ValidationError(
-        `Invalid publish request: ${issues.join(', ')}`,
-        field,
-        { valibotIssues: error.issues }
-      );
+      throw new ValidationError(`Invalid publish request: ${issues.join(', ')}`, field, {
+        valibotIssues: error.issues,
+      });
     }
     throw new ValidationError('Invalid request format', 'body');
   }
@@ -229,19 +231,18 @@ export function validateProfileRequest(body: unknown): {
     };
   } catch (error) {
     if (error instanceof v.ValiError) {
-       
-      const issues = error.issues.map((issue: { path?: Array<{ key: unknown }>; message?: unknown }) => {
-         
-        const path = issue.path?.map((p: { key: unknown }) => String(p.key ?? '')).join('.') ?? 'root';
-         
-        const message = String(issue.message ?? '');
-        return `${path}: ${message}`;
-      });
-      throw new ValidationError(
-        `Invalid profile request: ${issues.join(', ')}`,
-        'body',
-        { valibotIssues: error.issues }
+      const issues = error.issues.map(
+        (issue: { path?: Array<{ key: unknown }>; message?: unknown }) => {
+          const path =
+            issue.path?.map((p: { key: unknown }) => String(p.key ?? '')).join('.') ?? 'root';
+
+          const message = String(issue.message ?? '');
+          return `${path}: ${message}`;
+        }
       );
+      throw new ValidationError(`Invalid profile request: ${issues.join(', ')}`, 'body', {
+        valibotIssues: error.issues,
+      });
     }
     throw new ValidationError('Invalid request format', 'body');
   }
@@ -258,8 +259,9 @@ export function validateRelayUrl(url: unknown): string {
     return v.parse(RelayUrlSchema, url);
   } catch (error) {
     if (error instanceof v.ValiError) {
-       
-      const issues = error.issues.map((issue: { message?: unknown }) => String(issue.message ?? '')).join(', ');
+      const issues = error.issues
+        .map((issue: { message?: unknown }) => String(issue.message ?? ''))
+        .join(', ');
       throw new ValidationError(`Invalid relay URL: ${issues}`, 'relay', {
         url: String(url),
       });

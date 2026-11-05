@@ -5,7 +5,7 @@ import type { PublishOutcome, RelayResult } from './types';
 /**
  * Classifies publish outcome based on results and policy success criteria
  * Centralized function for all outcome classification logic
- * 
+ *
  * @param results Array of relay results
  * @param policy Publish policy with success criteria
  * @returns Classified publish outcome

@@ -1,8 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import {
-  ValidationError,
-} from '../../../src/core/errors';
+import { ValidationError } from '../../../src/core/errors';
 import {
   mapErrorToResponse,
   mapPublishOutcomeToResponse,

@@ -80,9 +80,9 @@ describe('HTTP Handlers', () => {
       const body = (await response.json()) as { results: unknown[] };
       expect(body.results).toBeDefined();
       expect(Array.isArray(body.results)).toBe(true);
-       
+
       const results = body.results;
-       
+
       expect(results.length).toBeGreaterThan(0);
     });
 

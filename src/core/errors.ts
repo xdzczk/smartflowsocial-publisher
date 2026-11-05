@@ -9,10 +9,7 @@ export abstract class AppError extends Error {
   abstract readonly httpStatus: number;
   readonly details?: Record<string, unknown>;
 
-  constructor(
-    message: string,
-    details?: Record<string, unknown>
-  ) {
+  constructor(message: string, details?: Record<string, unknown>) {
     super(message);
     this.name = this.constructor.name;
     this.details = details;
@@ -51,7 +48,8 @@ export class ValidationError extends AppError {
       } else if (field.includes('event.sig')) {
         this.suggestion = 'Event signature must be a 128-character hexadecimal string';
       } else if (field.includes('event.pubkey')) {
-        this.suggestion = 'Pubkey must be a 64-character hexadecimal string or bech32 encoded (npub...)';
+        this.suggestion =
+          'Pubkey must be a 64-character hexadecimal string or bech32 encoded (npub...)';
       } else if (field.includes('relays')) {
         this.suggestion = 'Relays must be an array of valid WebSocket URLs (wss://...)';
       }
@@ -90,11 +88,7 @@ export class TimeoutError extends AppError {
   readonly httpStatus = 504; // Gateway Timeout
   readonly timeoutMs?: number;
 
-  constructor(
-    message: string,
-    timeoutMs?: number,
-    details?: Record<string, unknown>
-  ) {
+  constructor(message: string, timeoutMs?: number, details?: Record<string, unknown>) {
     super(message, details);
     this.timeoutMs = timeoutMs;
   }
@@ -108,10 +102,7 @@ export class ConfigurationError extends AppError {
   readonly code = 'CONFIGURATION_ERROR';
   readonly httpStatus = 500;
 
-  constructor(
-    message: string,
-    details?: Record<string, unknown>
-  ) {
+  constructor(message: string, details?: Record<string, unknown>) {
     super(message, details);
   }
 }
@@ -124,13 +115,10 @@ export class ReplayError extends AppError {
   readonly code = 'REPLAY_ERROR';
   readonly httpStatus = 409; // Conflict
   readonly eventId?: string;
-  readonly suggestion = 'Event has already been published. Replay protection prevents duplicate publishing for 24 hours.';
+  readonly suggestion =
+    'Event has already been published. Replay protection prevents duplicate publishing for 24 hours.';
 
-  constructor(
-    message: string,
-    eventId?: string,
-    details?: Record<string, unknown>
-  ) {
+  constructor(message: string, eventId?: string, details?: Record<string, unknown>) {
     super(message, {
       ...details,
       eventId,
