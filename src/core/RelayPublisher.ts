@@ -29,10 +29,7 @@ export function resetCircuitBreakerManager(): void {
 /**
  * Creates a connection timeout promise
  */
-function createConnectionTimeout(
-  timeoutMs: number,
-  abortSignal?: AbortSignal
-): Promise<never> {
+function createConnectionTimeout(timeoutMs: number, abortSignal?: AbortSignal): Promise<never> {
   return new Promise<never>((_, reject) => {
     const timeoutId = setTimeout(() => {
       reject(new TimeoutError('CONNECTION_TIMEOUT', timeoutMs));
@@ -48,10 +45,7 @@ function createConnectionTimeout(
 /**
  * Creates a publish timeout promise
  */
-function createPublishTimeout(
-  remainingTime: number,
-  abortSignal?: AbortSignal
-): Promise<never> {
+function createPublishTimeout(remainingTime: number, abortSignal?: AbortSignal): Promise<never> {
   return new Promise<never>((_, reject) => {
     const timeoutId = setTimeout(() => {
       reject(new TimeoutError('PUBLISH_TIMEOUT', remainingTime));
@@ -225,13 +219,13 @@ export async function publishToRelay(
   // Check circuit breaker
   if (!circuitBreakerManager.canAttempt(relayUrl)) {
     logger.warn(`[${relayUrl}] Circuit breaker is open, skipping publish`);
-    
+
     // Update state machine: circuit_open
     if (stateMachine.canTransitionTo('circuit_open')) {
       stateMachine.transition('circuit_open');
     }
     stateMachine.setCircuitState('open');
-    
+
     return {
       relay: relayUrl,
       status: 'failure',
@@ -335,7 +329,15 @@ async function handleRetryAttempt(
 ): Promise<RelayResult> {
   try {
     const result = await retryWithBackoff(
-      () => publishToRelayAttempt(relay, event, policy, logger, abortSignal, stateMachineManager ?? undefined),
+      () =>
+        publishToRelayAttempt(
+          relay,
+          event,
+          policy,
+          logger,
+          abortSignal,
+          stateMachineManager ?? undefined
+        ),
       policy.retry.maxAttempts,
       policy.retry.backoffMs,
       logger,
@@ -395,7 +397,11 @@ function classifyFailureReason(errorMessage: string): RelayFailureReason {
     return 'rejected';
   }
   // Check for timeout errors
-  if (errorMessage.includes('timeout') || errorMessage.includes('Timeout') || errorMessage.includes('aborted')) {
+  if (
+    errorMessage.includes('timeout') ||
+    errorMessage.includes('Timeout') ||
+    errorMessage.includes('aborted')
+  ) {
     return 'timeout';
   }
   // Check for invalid event errors

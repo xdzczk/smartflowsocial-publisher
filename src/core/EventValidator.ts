@@ -1,6 +1,9 @@
 import type { Event } from 'nostr-tools';
 
-import { validateEvent as validateEventSchema, validateSignedEventSchema } from '../validation/schemas';
+import {
+  validateEvent as validateEventSchema,
+  validateSignedEventSchema,
+} from '../validation/schemas';
 
 import { ValidationError } from './errors';
 import type { SignedEvent, UnsignedEvent } from './types';
@@ -8,7 +11,7 @@ import type { SignedEvent, UnsignedEvent } from './types';
 /**
  * Validates that an event has the required fields
  * Uses Valibot schema validation for comprehensive field-level validation
- * 
+ *
  * @param event The event to validate
  * @returns Type guard indicating if event has required fields
  */
@@ -24,7 +27,7 @@ export function validateEvent(event: unknown): event is Event {
 /**
  * Checks if an event is signed (has a valid signature field)
  * Returns a branded SignedEvent type if valid
- * 
+ *
  * @param event The event to check
  * @returns Type guard indicating if event is signed
  */
@@ -62,10 +65,7 @@ export function validateSignedEvent(event: unknown): SignedEvent {
  */
 export function validateAndAssertSigned(event: Event): SignedEvent {
   if (!isSignedEvent(event)) {
-    throw new ValidationError(
-      'Event is not signed: missing or invalid signature',
-      'event.sig'
-    );
+    throw new ValidationError('Event is not signed: missing or invalid signature', 'event.sig');
   }
   // Type system now knows event is SignedEvent
   return event;
@@ -73,7 +73,7 @@ export function validateAndAssertSigned(event: Event): SignedEvent {
 
 /**
  * Type guard for unsigned events
- * 
+ *
  * @param event The event to check
  * @returns Type guard indicating if event is unsigned
  */

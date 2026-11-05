@@ -24,17 +24,14 @@ function validateNumericEnv(
  * @param logger Logger instance for warnings
  * @throws {Error} if required configuration is missing
  */
-export function validateEnvironment(
-  env: Env,
-  logger: { warn: (_warning: string) => void }
-): void {
+export function validateEnvironment(env: Env, logger: { warn: (_warning: string) => void }): void {
   // Validate required: PROFILES KV namespace
   // In Cloudflare Workers, KVNamespace is always defined, but we check for type safety
   // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- Runtime safety check
   if (!env.PROFILES) {
     throw new Error(
       'Missing required environment variable: PROFILES KV namespace is not configured. ' +
-      'Run: wrangler kv:namespace create PROFILES'
+        'Run: wrangler kv:namespace create PROFILES'
     );
   }
 
@@ -42,7 +39,7 @@ export function validateEnvironment(
   if (!env.API_TOKEN) {
     logger.warn(
       'API_TOKEN not set - worker is publicly accessible. ' +
-      'Set API_TOKEN environment variable to protect the worker.'
+        'Set API_TOKEN environment variable to protect the worker.'
     );
   }
 
@@ -52,13 +49,16 @@ export function validateEnvironment(
 
   // Validate optional: CORS
   if (env.CORS_ENABLED === 'true' && !env.CORS_ORIGINS) {
-    logger.warn(
-      'CORS_ENABLED is true but CORS_ORIGINS is not set. CORS will be disabled.'
-    );
+    logger.warn('CORS_ENABLED is true but CORS_ORIGINS is not set. CORS will be disabled.');
   }
 
   // Validate optional: Metrics export
   if (env.METRICS_EXPORT_ENABLED === 'true') {
-    validateNumericEnv(env.METRICS_EXPORT_INTERVAL_MS, 'METRICS_EXPORT_INTERVAL_MS', '60000', logger);
+    validateNumericEnv(
+      env.METRICS_EXPORT_INTERVAL_MS,
+      'METRICS_EXPORT_INTERVAL_MS',
+      '60000',
+      logger
+    );
   }
 }

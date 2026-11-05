@@ -4,5 +4,6 @@ build/
 *.log
 .DS_Store
 *.tsbuildinfo
+eslint-report.json
 .wrangler/
 .pnpm-store/

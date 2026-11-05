@@ -94,7 +94,6 @@ export class MockRelayConnection implements RelayConnection {
   }
 
   subscribe(
-     
     _filters: Filter[],
     callbacks: {
       onevent: (_event: Event) => void;

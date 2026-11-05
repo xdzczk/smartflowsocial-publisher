@@ -22,7 +22,9 @@ function parseCorsConfig(env: Env): CorsConfig {
 
   if (enabled && env.CORS_ORIGINS) {
     // Parse comma-separated origins
-    const origins = env.CORS_ORIGINS.split(',').map((origin) => origin.trim()).filter(Boolean);
+    const origins = env.CORS_ORIGINS.split(',')
+      .map((origin) => origin.trim())
+      .filter(Boolean);
     for (const origin of origins) {
       allowedOrigins.add(origin);
     }
@@ -76,7 +78,10 @@ export function handleCorsPreflight(request: Request, config: CorsConfig): Respo
   const corsHeaders = new Headers();
   corsHeaders.set('Access-Control-Allow-Origin', origin ?? '');
   corsHeaders.set('Access-Control-Allow-Methods', config.allowedMethods.join(', '));
-  corsHeaders.set('Access-Control-Allow-Headers', requestHeaders ?? config.allowedHeaders.join(', '));
+  corsHeaders.set(
+    'Access-Control-Allow-Headers',
+    requestHeaders ?? config.allowedHeaders.join(', ')
+  );
   corsHeaders.set('Access-Control-Max-Age', String(config.maxAge));
 
   return new Response(null, { status: 204, headers: corsHeaders });
@@ -89,11 +94,7 @@ export function handleCorsPreflight(request: Request, config: CorsConfig): Respo
  * @param config CORS configuration
  * @returns Response with CORS headers added
  */
-export function addCorsHeaders(
-  request: Request,
-  response: Response,
-  config: CorsConfig
-): Response {
+export function addCorsHeaders(request: Request, response: Response, config: CorsConfig): Response {
   if (!config.enabled) {
     return response;
   }

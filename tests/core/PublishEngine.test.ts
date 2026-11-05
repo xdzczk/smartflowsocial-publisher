@@ -231,12 +231,7 @@ describe('PublishEngine', () => {
         ...testPolicy,
         relayConcurrency: 2,
       };
-      const relays = createMockRelays([
-        RELAY1_URL,
-        RELAY2_URL,
-        RELAY3_URL,
-        RELAY4_URL,
-      ]);
+      const relays = createMockRelays([RELAY1_URL, RELAY2_URL, RELAY3_URL, RELAY4_URL]);
       // Add delays to track concurrency
       relays.forEach((relay) => {
         const connection = relay.getConnection();
@@ -269,10 +264,7 @@ describe('PublishEngine', () => {
         overallTimeoutMs: 500,
         perRelayTimeoutMs: 2000, // Longer than overall timeout
       };
-      const relays = createMockRelays([
-        RELAY1_URL,
-        RELAY2_URL,
-      ]);
+      const relays = createMockRelays([RELAY1_URL, RELAY2_URL]);
       // Make relays slow
       relays.forEach((relay) => {
         const connection = relay.getConnection();
@@ -297,11 +289,7 @@ describe('PublishEngine', () => {
   describe('result ordering', () => {
     it('should return results in input relay order', async () => {
       const logger = createMockLogger();
-      const relayUrls = [
-        RELAY1_URL,
-        RELAY2_URL,
-        RELAY3_URL,
-      ];
+      const relayUrls = [RELAY1_URL, RELAY2_URL, RELAY3_URL];
       const relays = createMockRelays(relayUrls);
       const event = createSignedEvent();
 
@@ -341,9 +329,7 @@ describe('PublishEngine', () => {
       await vi.runAllTimersAsync();
       await promise;
 
-      expect(
-        logger.infoLogs.some((log) => log.join(' ').includes('Starting publish'))
-      ).toBe(true);
+      expect(logger.infoLogs.some((log) => log.join(' ').includes('Starting publish'))).toBe(true);
     });
 
     it('should log completion', async () => {
@@ -355,9 +341,7 @@ describe('PublishEngine', () => {
       await vi.runAllTimersAsync();
       await promise;
 
-      expect(
-        logger.infoLogs.some((log) => log.join(' ').includes('Publish completed'))
-      ).toBe(true);
+      expect(logger.infoLogs.some((log) => log.join(' ').includes('Publish completed'))).toBe(true);
     });
   });
 });

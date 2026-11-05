@@ -8,11 +8,7 @@
 import type { KVNamespace } from '@cloudflare/workers-types';
 import { describe, expect, it, vi } from 'vitest';
 
-import {
-  checkAndRecordEvent,
-  checkReplay,
-  recordEvent,
-} from '../../src/security/replayProtection';
+import { checkAndRecordEvent, checkReplay, recordEvent } from '../../src/security/replayProtection';
 
 /**
  * Creates a mock KV namespace for testing

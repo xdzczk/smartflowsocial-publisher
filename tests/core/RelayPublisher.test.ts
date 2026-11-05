@@ -100,7 +100,7 @@ describe('RelayPublisher', () => {
     it('should timeout on connection.connect()', async () => {
       const logger = createMockLogger();
       const event = createSignedEvent();
-      
+
       // Create relay with a connection that has connect delay
       const connection = new MockRelayConnection({ connectDelay: 1000 });
       const relay = new MockRelay(RELAY_URL, { connection });
@@ -118,12 +118,12 @@ describe('RelayPublisher', () => {
     it('should timeout on publish', async () => {
       const logger = createMockLogger();
       const event = createSignedEvent();
-      
+
       // Create relay with a connection that has publish delay
       // Connection connects quickly, but publish is slow
       const connection = new MockRelayConnection({ publishDelay: 2000 });
       const relay = new MockRelay(RELAY_URL, { connection });
-      
+
       const promise = publishToRelay(relay, event, testPolicy, logger);
       // Advance past connection (happens quickly) but publish times out
       // Connection: ~0ms, Connect: ~0ms, Publish starts but times out
@@ -334,7 +334,9 @@ describe('RelayPublisher', () => {
       await vi.runAllTimersAsync();
       await promise;
 
-      expect(logger.infoLogs.some((log) => log.join(' ').includes('Starting publish for event'))).toBe(true);
+      expect(
+        logger.infoLogs.some((log) => log.join(' ').includes('Starting publish for event'))
+      ).toBe(true);
     });
 
     it('should log errors', async () => {
