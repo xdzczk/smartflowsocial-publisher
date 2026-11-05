@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
-import { isSignedEvent, isUnsignedEvent, validateEvent, validateSignedEvent } from '../../src/core/EventValidator';
+import {
+  isSignedEvent,
+  isUnsignedEvent,
+  validateEvent,
+  validateSignedEvent,
+} from '../../src/core/EventValidator';
 import { createSignedEvent, createUnsignedEvent } from '../utils/fixtures';
 
 describe('Event Validation Properties', () => {
@@ -48,10 +53,7 @@ describe('Event Validation Properties', () => {
     });
 
     it('should always return false for unsigned events', () => {
-      const unsignedEvents = [
-        createUnsignedEvent(),
-        createUnsignedEvent({ kind: 0 }),
-      ];
+      const unsignedEvents = [createUnsignedEvent(), createUnsignedEvent({ kind: 0 })];
 
       unsignedEvents.forEach((event) => {
         expect(isSignedEvent(event)).toBe(false);
@@ -59,11 +61,7 @@ describe('Event Validation Properties', () => {
     });
 
     it('should be complementary to isUnsignedEvent', () => {
-      const events = [
-        createSignedEvent(),
-        createUnsignedEvent(),
-        createSignedEvent({ kind: 0 }),
-      ];
+      const events = [createSignedEvent(), createUnsignedEvent(), createSignedEvent({ kind: 0 })];
 
       events.forEach((event) => {
         if (isSignedEvent(event)) {
@@ -78,13 +76,13 @@ describe('Event Validation Properties', () => {
   describe('validateSignedEvent properties', () => {
     it('should round-trip: validate → isSignedEvent → validateSignedEvent', () => {
       const event = createSignedEvent();
-      
+
       // Step 1: validate
       expect(validateEvent(event)).toBe(true);
-      
+
       // Step 2: isSignedEvent
       expect(isSignedEvent(event)).toBe(true);
-      
+
       // Step 3: validateSignedEvent (should not throw)
       expect(() => validateSignedEvent(event)).not.toThrow();
     });

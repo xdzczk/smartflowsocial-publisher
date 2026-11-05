@@ -27,11 +27,21 @@ declare module 'nostr-tools' {
 
   export class Relay {
     constructor(url: string, options?: { enablePing?: boolean; enableReconnect?: boolean });
-    static connect(url: string, options?: { enablePing?: boolean; enableReconnect?: boolean }): Promise<Relay>;
+    static connect(
+      url: string,
+      options?: { enablePing?: boolean; enableReconnect?: boolean }
+    ): Promise<Relay>;
     connect(): Promise<void>;
     close(): void;
     publish(event: Event): Promise<string>;
-    subscribe(filters: Filter[], params?: { onevent?: (evt: Event) => void; oneose?: () => void; onclose?: (reason: string) => void }): Subscription;
+    subscribe(
+      filters: Filter[],
+      params?: {
+        onevent?: (evt: Event) => void;
+        oneose?: () => void;
+        onclose?: (reason: string) => void;
+      }
+    ): Subscription;
     get connected(): boolean;
   }
 }

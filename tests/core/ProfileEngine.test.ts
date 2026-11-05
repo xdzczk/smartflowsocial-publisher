@@ -138,7 +138,7 @@ describe('ProfileEngine', () => {
       // We need to advance past the timeout (perRelayTimeoutMs = 1000ms)
       // But also need to handle the Promise.any which waits for all to reject
       vi.advanceTimersByTime(1100); // Past perRelayTimeoutMs (1000ms)
-      
+
       // Run all pending timers to ensure timeout fires
       await vi.runAllTimersAsync();
       const result = await promise;
@@ -155,12 +155,7 @@ describe('ProfileEngine', () => {
         ...testPolicy,
         maxRelays: 2,
       };
-      const relays = createMockRelays([
-        RELAY1_URL,
-        RELAY2_URL,
-        RELAY3_URL,
-        RELAY4_URL,
-      ]);
+      const relays = createMockRelays([RELAY1_URL, RELAY2_URL, RELAY3_URL, RELAY4_URL]);
       const pubkey = TEST_PUBKEY;
 
       const promise = fetchProfile(pubkey, relays, policy, logger);
@@ -211,9 +206,7 @@ describe('ProfileEngine', () => {
       await vi.runAllTimersAsync();
       await promise;
 
-      expect(
-        logger.infoLogs.some((log) => log.join(' ').includes('Fetching profile'))
-      ).toBe(true);
+      expect(logger.infoLogs.some((log) => log.join(' ').includes('Fetching profile'))).toBe(true);
     });
 
     it('should log errors on failure', async () => {

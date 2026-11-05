@@ -58,7 +58,9 @@ export class HealthCheckManager {
     // Mark as unhealthy after 3 consecutive failures
     if (health.consecutiveFailures >= 3) {
       health.healthy = false;
-      this.logger.warn(`[HealthCheck] ${relayUrl} marked as unhealthy (${health.consecutiveFailures} failures)`);
+      this.logger.warn(
+        `[HealthCheck] ${relayUrl} marked as unhealthy (${health.consecutiveFailures} failures)`
+      );
     }
 
     this.healthStatus.set(relayUrl, health);

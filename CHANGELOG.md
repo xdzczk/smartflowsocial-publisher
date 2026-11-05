@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+
 - Batch publishing endpoint (`/batch`) for publishing multiple events in a single request
 - CORS support with configurable allowed origins via environment variables
 - Environment variable validation on startup
@@ -21,18 +22,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Environment variable example file (`.env.example`)
 
 ### Changed
+
 - Standardized all error responses to use consistent `mapErrorToResponse` function
 - Improved request size validation to use actual body streaming instead of Content-Length header
 - Enhanced error responses with correlation IDs and structured error codes
 - Updated README with batch endpoint documentation and query parameter details
 
 ### Fixed
+
 - Circuit breaker state persistence across tests (now resets between tests)
 - Error classification order to correctly identify rejected vs timeout errors
 - Valibot validation error field detection for nested array paths
 - All test failures (154 tests now passing)
 
 ### Security
+
 - Improved request size validation prevents Content-Length header spoofing
 - Input sanitization for event content and tags
 - Rate limiting per IP/API token
@@ -41,6 +45,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.0.0] - Initial Release
 
 ### Added
+
 - HTTP to Nostr relay publishing via Cloudflare Workers
 - Profile fetching with KV caching
 - Circuit breaker pattern for relay failures
