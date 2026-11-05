@@ -38,8 +38,7 @@ function extractMessageAndContext(args: unknown[]): {
   }
 
   if (args.length === 1) {
-    const message =
-      typeof args[0] === 'string' ? args[0] : JSON.stringify(args[0]);
+    const message = typeof args[0] === 'string' ? args[0] : JSON.stringify(args[0]);
     return { message };
   }
 

@@ -78,26 +78,23 @@ async function fetchProfileFromRelay(
       });
 
       // Subscribe to get the profile
-      subscription = connection.subscribe(
-        [{ limit: 1, kinds: [0], authors: [pubkey] }],
-        {
-          onevent: (ev: Event) => {
-            logger.info(`[${relayUrl}] Fetched profile for ${pubkey}`);
-            clearTimeout(eventTimeout);
-            if (subscription) {
-              subscription.close();
-            }
-            connection.close();
-            const latencyMs = Date.now() - startTime;
-            resolve({ event: ev, latencyMs });
-          },
-          onclose: (reason: string) => {
-            clearTimeout(eventTimeout);
-            connection.close();
-            reject(new Error(`Subscription closed: ${reason}`));
-          },
-        }
-      );
+      subscription = connection.subscribe([{ limit: 1, kinds: [0], authors: [pubkey] }], {
+        onevent: (ev: Event) => {
+          logger.info(`[${relayUrl}] Fetched profile for ${pubkey}`);
+          clearTimeout(eventTimeout);
+          if (subscription) {
+            subscription.close();
+          }
+          connection.close();
+          const latencyMs = Date.now() - startTime;
+          resolve({ event: ev, latencyMs });
+        },
+        onclose: (reason: string) => {
+          clearTimeout(eventTimeout);
+          connection.close();
+          reject(new Error(`Subscription closed: ${reason}`));
+        },
+      });
     });
   } catch (error) {
     connection.close();

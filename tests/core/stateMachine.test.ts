@@ -1,9 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import {
-  RelayOperationStateMachine,
-  RelayStateMachineManager,
-} from '../../src/core/stateMachine';
+import { RelayOperationStateMachine, RelayStateMachineManager } from '../../src/core/stateMachine';
 import type { RelayUrl } from '../../src/core/types';
 import { MockLogger } from '../utils/mocks';
 
@@ -81,7 +78,7 @@ describe('stateMachine', () => {
       machine.transition('retry_eligible');
       machine.transition('retry_in_progress');
       expect(machine.getAttemptCount()).toBe(1);
-      
+
       // Second retry
       machine.transition('failure');
       machine.transition('retry_eligible');
@@ -97,7 +94,7 @@ describe('stateMachine', () => {
       machine.transition('retry_eligible');
       machine.transition('retry_in_progress');
       expect(machine.getAttemptCount()).toBe(1);
-      
+
       machine.transition('success');
       expect(machine.getAttemptCount()).toBe(0);
     });
@@ -122,7 +119,7 @@ describe('stateMachine', () => {
       machine.transition('connecting');
       machine.transition('publishing');
       machine.transition('success');
-      
+
       const history = machine.getTransitionHistory();
       expect(history.length).toBe(3);
       expect(history[0]?.from).toBe('idle');
@@ -157,7 +154,7 @@ describe('stateMachine', () => {
       const manager = new RelayStateMachineManager(new MockLogger());
       const machine1 = manager.getMachine(RELAY1_URL);
       const machine2 = manager.getMachine(RELAY2_URL);
-      
+
       expect(machine1).toBeDefined();
       expect(machine2).toBeDefined();
       expect(machine1).not.toBe(machine2);
@@ -167,16 +164,16 @@ describe('stateMachine', () => {
       const manager = new RelayStateMachineManager(new MockLogger());
       const machine1 = manager.getMachine(TEST_RELAY_URL);
       const machine2 = manager.getMachine(TEST_RELAY_URL);
-      
+
       expect(machine1).toBe(machine2);
     });
 
     it('should reset all machines', () => {
       const manager = new RelayStateMachineManager(new MockLogger());
       const machine1 = manager.getMachine(RELAY1_URL);
-      
+
       manager.reset();
-      
+
       // New machines should be created after reset
       const machine3 = manager.getMachine(RELAY1_URL);
       expect(machine3).not.toBe(machine1);

@@ -92,7 +92,7 @@ export function parsePublishRequest(body: unknown): {
 
 /**
  * Maps a PublishOutcome to HTTP PublishResponse
- * 
+ *
  * @param outcome The publish outcome from the core engine
  * @returns HTTP response structure with per-relay results
  */
@@ -263,7 +263,7 @@ export function createSSEHeaders(correlationId?: string): Headers {
   const headers = new Headers({
     'Content-Type': 'text/event-stream',
     'Cache-Control': 'no-cache',
-    'Connection': 'keep-alive',
+    Connection: 'keep-alive',
   });
 
   if (correlationId) {

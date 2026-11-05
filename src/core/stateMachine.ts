@@ -43,7 +43,11 @@ export class RelayOperationStateMachine {
   private circuitState: CircuitState = 'closed';
   private attemptCount = 0;
   private lastTransitionTime = Date.now();
-  private transitionHistory: Array<{ from: RelayOperationState; to: RelayOperationState; timestamp: number }> = [];
+  private transitionHistory: Array<{
+    from: RelayOperationState;
+    to: RelayOperationState;
+    timestamp: number;
+  }> = [];
 
   constructor(
     private readonly relayUrl: RelayUrl,
@@ -74,7 +78,11 @@ export class RelayOperationStateMachine {
   /**
    * Gets the transition history
    */
-  getTransitionHistory(): ReadonlyArray<{ from: RelayOperationState; to: RelayOperationState; timestamp: number }> {
+  getTransitionHistory(): ReadonlyArray<{
+    from: RelayOperationState;
+    to: RelayOperationState;
+    timestamp: number;
+  }> {
     return this.transitionHistory;
   }
 
@@ -85,11 +93,11 @@ export class RelayOperationStateMachine {
    */
   transition(newState: RelayOperationState): boolean {
     const validNextStates = VALID_TRANSITIONS[this.state];
-    
+
     if (!validNextStates.includes(newState)) {
       this.logger.warn(
         `[StateMachine] ${this.relayUrl}: Invalid transition from ${this.state} to ${newState}. ` +
-        `Valid transitions: ${validNextStates.join(', ')}`
+          `Valid transitions: ${validNextStates.join(', ')}`
       );
       return false;
     }
@@ -97,7 +105,7 @@ export class RelayOperationStateMachine {
     const oldState = this.state;
     this.state = newState;
     this.lastTransitionTime = Date.now();
-    
+
     this.transitionHistory.push({
       from: oldState,
       to: newState,
@@ -114,8 +122,10 @@ export class RelayOperationStateMachine {
       this.attemptCount = 0;
     }
 
-    this.logger.info(`[StateMachine] ${this.relayUrl}: ${oldState} → ${newState} (attempt ${this.attemptCount})`);
-    
+    this.logger.info(
+      `[StateMachine] ${this.relayUrl}: ${oldState} → ${newState} (attempt ${this.attemptCount})`
+    );
+
     return true;
   }
 
@@ -127,8 +137,10 @@ export class RelayOperationStateMachine {
     if (this.circuitState !== newCircuitState) {
       const oldCircuitState = this.circuitState;
       this.circuitState = newCircuitState;
-      this.logger.info(`[StateMachine] ${this.relayUrl}: Circuit ${oldCircuitState} → ${newCircuitState}`);
-      
+      this.logger.info(
+        `[StateMachine] ${this.relayUrl}: Circuit ${oldCircuitState} → ${newCircuitState}`
+      );
+
       // If circuit opens, transition operation to circuit_open state
       if (newCircuitState === 'open' && this.state !== 'circuit_open') {
         this.transition('circuit_open');

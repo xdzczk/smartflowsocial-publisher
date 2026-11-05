@@ -160,9 +160,7 @@ export class CircuitBreaker {
    */
   private cleanup(): void {
     const now = Date.now();
-    this.failures = this.failures.filter(
-      (f) => f.timestamp > now - this.config.failureWindowMs
-    );
+    this.failures = this.failures.filter((f) => f.timestamp > now - this.config.failureWindowMs);
   }
 }
 
