@@ -4,13 +4,8 @@ import { validateEnvironment } from './config/env';
 import { addCorsHeaders, getCorsConfig, handleCorsPreflight } from './middleware/cors';
 import { RateLimiter } from './middleware/rateLimiter';
 import { ConsoleLogger } from './observability/logger';
-import {
-  batchPublishHandler,
-  profileHandler,
-  publishHandler,
-} from './transport/http/handlers';
+import { batchPublishHandler, profileHandler, publishHandler } from './transport/http/handlers';
 import type { Env } from './types';
-
 
 /**
  * Extracts correlation ID from request headers or generates a new one
@@ -226,7 +221,9 @@ const handler: ExportedHandler<Env> = {
 
     // Only POST allowed for other endpoints
     if (request.method !== 'POST') {
-      const notFoundResponse = new Response('Sooner and later you will see great changes made.', { status: 404 });
+      const notFoundResponse = new Response('Sooner and later you will see great changes made.', {
+        status: 404,
+      });
       return addCorsHeaders(request, notFoundResponse, corsConfig);
     }
 

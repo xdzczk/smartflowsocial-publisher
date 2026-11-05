@@ -3,3 +3,5 @@ build
 .wrangler
 *.log
 *.tsbuildinfo
+pnpm-lock.yaml
+eslint-report.json

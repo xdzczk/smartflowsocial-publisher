@@ -28,7 +28,7 @@ describe('typeEnforcement', () => {
   describe('Type narrowing with isSignedEvent', () => {
     it('should narrow type to SignedEvent', () => {
       const event = createSignedEvent();
-      
+
       if (isSignedEvent(event)) {
         // TypeScript should know event is SignedEvent here
         const signed: SignedEvent = event; // Should compile without error
@@ -38,7 +38,7 @@ describe('typeEnforcement', () => {
 
     it('should narrow type to UnsignedEvent', () => {
       const event = createUnsignedEvent();
-      
+
       if (isUnsignedEvent(event)) {
         // TypeScript should know event is UnsignedEvent here
         const unsigned: UnsignedEvent = event; // Should compile without error
@@ -50,7 +50,7 @@ describe('typeEnforcement', () => {
   describe('Type assertion with assertSignedEvent', () => {
     it('should assert and narrow type to SignedEvent', () => {
       const event = createSignedEvent();
-      
+
       assertSignedEvent(event);
       // TypeScript should know event is SignedEvent after assertion
       const signed: SignedEvent = event; // Should compile without error
@@ -59,7 +59,7 @@ describe('typeEnforcement', () => {
 
     it(TEST_THROW_ON_UNSIGNED, () => {
       const event = createUnsignedEvent();
-      
+
       expect(() => assertSignedEvent(event)).toThrow(EVENT_NOT_SIGNED);
     });
   });
@@ -67,7 +67,7 @@ describe('typeEnforcement', () => {
   describe('Type assertion with assertUnsignedEvent', () => {
     it('should assert and narrow type to UnsignedEvent', () => {
       const event = createUnsignedEvent();
-      
+
       assertUnsignedEvent(event);
       // TypeScript should know event is UnsignedEvent after assertion
       const unsigned: UnsignedEvent = event; // Should compile without error
@@ -76,7 +76,7 @@ describe('typeEnforcement', () => {
 
     it('should throw on signed event', () => {
       const event = createSignedEvent();
-      
+
       expect(() => assertUnsignedEvent(event)).toThrow(EVENT_IS_SIGNED);
     });
   });
@@ -85,7 +85,7 @@ describe('typeEnforcement', () => {
     it('should return SignedEvent type', () => {
       const event = createSignedEvent();
       const validated = validateSignedEvent(event);
-      
+
       // TypeScript should know validated is SignedEvent
       const signed: SignedEvent = validated; // Should compile without error
       expect(signed).toBeDefined();
@@ -93,7 +93,7 @@ describe('typeEnforcement', () => {
 
     it(TEST_THROW_ON_UNSIGNED, () => {
       const event = createUnsignedEvent();
-      
+
       expect(() => validateSignedEvent(event)).toThrow(ValidationError);
     });
   });
@@ -102,7 +102,7 @@ describe('typeEnforcement', () => {
     it('should return SignedEvent type from Event', () => {
       const event = createSignedEvent();
       const validated = validateAndAssertSigned(event);
-      
+
       // TypeScript should know validated is SignedEvent
       const signed: SignedEvent = validated; // Should compile without error
       expect(signed).toBeDefined();
@@ -110,7 +110,7 @@ describe('typeEnforcement', () => {
 
     it(TEST_THROW_ON_UNSIGNED, () => {
       const event = createUnsignedEvent();
-      
+
       // Should throw an error (ValidationError or similar)
       expect(() => validateAndAssertSigned(event)).toThrow();
     });
@@ -119,7 +119,7 @@ describe('typeEnforcement', () => {
   describe('Compile-time type safety', () => {
     // These tests verify that TypeScript prevents invalid operations at compile time
     // The actual compilation check happens via TypeScript's type checker
-    
+
     it('should enforce SignedEvent type in function parameters', () => {
       // This function should only accept SignedEvent
       function publishEvent(event: SignedEvent): void {

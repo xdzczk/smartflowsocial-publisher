@@ -37,9 +37,7 @@ describe('Input Validation: Content Sanitization', () => {
       expect(() => sanitizeContent(validContent)).not.toThrow();
 
       const oversizedContent = 'a'.repeat(maxSize + 1);
-      expect(() => sanitizeContent(oversizedContent)).toThrow(
-        'Content exceeds maximum size'
-      );
+      expect(() => sanitizeContent(oversizedContent)).toThrow('Content exceeds maximum size');
     });
 
     it('should validate UTF-8 encoding', () => {

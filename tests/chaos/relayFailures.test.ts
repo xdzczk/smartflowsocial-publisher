@@ -45,13 +45,7 @@ describe('Chaos Tests - Relay Failures', () => {
   describe('random relay failures', () => {
     it('should handle random mix of success and failure', async () => {
       const logger = createMockLogger();
-      const relays = createMockRelays([
-        RELAY1_URL,
-        RELAY2_URL,
-        RELAY3_URL,
-        RELAY4_URL,
-        RELAY5_URL,
-      ]);
+      const relays = createMockRelays([RELAY1_URL, RELAY2_URL, RELAY3_URL, RELAY4_URL, RELAY5_URL]);
       const event = createSignedEvent();
 
       // Randomly make some fail

@@ -202,10 +202,13 @@ export class NullMetrics implements Metrics {
  * @param env Optional environment variables for metrics export configuration
  * @returns Metrics instance
  */
-export async function createMetrics(logger: Logger, env?: {
-  METRICS_EXPORT_ENABLED?: string;
-  METRICS_EXPORT_INTERVAL_MS?: string;
-}): Promise<Metrics> {
+export async function createMetrics(
+  logger: Logger,
+  env?: {
+    METRICS_EXPORT_ENABLED?: string;
+    METRICS_EXPORT_INTERVAL_MS?: string;
+  }
+): Promise<Metrics> {
   let exporter: MetricsExporterType | null = null;
   if (env?.METRICS_EXPORT_ENABLED === 'true') {
     const metricsExportModule = await import('./metricsExport');

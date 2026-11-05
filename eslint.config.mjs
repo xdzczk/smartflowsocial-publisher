@@ -31,10 +31,7 @@ export default [
       'eslint-comments/disable-enable-pair': 'warn',
       'eslint-comments/no-unlimited-disable': 'error',
       'eslint-comments/no-unused-disable': 'error',
-      'eslint-comments/require-description': [
-        'warn',
-        { ignore: ['eslint-enable'] },
-      ],
+      'eslint-comments/require-description': ['warn', { ignore: ['eslint-enable'] }],
     },
   },
   {

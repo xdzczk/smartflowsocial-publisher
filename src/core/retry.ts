@@ -90,13 +90,17 @@ async function handleRetry(
 ): Promise<void> {
   // Don't retry if error is not retryable
   if (!isRetryableError(error)) {
-    logger.warn(`Non-retryable error encountered: ${error instanceof Error ? error.message : String(error)}`);
+    logger.warn(
+      `Non-retryable error encountered: ${error instanceof Error ? error.message : String(error)}`
+    );
     throw error;
   }
 
   // If this was the last attempt, don't wait
   if (attempt >= maxAttempts) {
-    logger.error(`Operation failed after ${maxAttempts} attempt(s): ${error instanceof Error ? error.message : String(error)}`);
+    logger.error(
+      `Operation failed after ${maxAttempts} attempt(s): ${error instanceof Error ? error.message : String(error)}`
+    );
     throw error;
   }
 
@@ -134,9 +138,7 @@ function updateStateMachineForRetry(
 /**
  * Updates state machine on success
  */
-function updateStateMachineOnSuccess(
-  stateMachine: RelayOperationStateMachine | undefined
-): void {
+function updateStateMachineOnSuccess(stateMachine: RelayOperationStateMachine | undefined): void {
   if (stateMachine?.canTransitionTo('success')) {
     stateMachine.transition('success');
   }

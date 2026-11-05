@@ -103,12 +103,12 @@ For detailed API documentation, see [API.md](docs/API.md). For architecture and 
 
 The service provides four main endpoints:
 
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/` or `/publish` | POST | Publish a single event to multiple relays |
-| `/batch` | POST | Publish multiple events in a single request |
-| `/profile` | POST | Fetch a Nostr profile (kind 0 event) |
-| `/health` | GET | Check health status of known relays |
+| Endpoint          | Method | Description                                 |
+| ----------------- | ------ | ------------------------------------------- |
+| `/` or `/publish` | POST   | Publish a single event to multiple relays   |
+| `/batch`          | POST   | Publish multiple events in a single request |
+| `/profile`        | POST   | Fetch a Nostr profile (kind 0 event)        |
+| `/health`         | GET    | Check health status of known relays         |
 
 For complete API documentation with request/response examples, error codes, and detailed field descriptions, see [API.md](docs/API.md).
 
@@ -119,6 +119,7 @@ For complete API documentation with request/response examples, error codes, and 
 Publishes a single signed Nostr event to multiple relays concurrently.
 
 **Request:**
+
 ```json
 {
   "relays": ["wss://relay.damus.io", "wss://relay.snort.social"],
@@ -134,6 +135,7 @@ Publishes a single signed Nostr event to multiple relays concurrently.
 ```
 
 **Request Fields:**
+
 - `relays` (required): Array of relay URLs. Must use `wss://` scheme. URLs are normalized (trimmed, deduplicated, max 12 relays).
 - `event` (required): Signed Nostr event JSON with required fields: `id`, `pubkey`, `kind`, `sig`.
 - `correlationId` (optional): Correlation ID for tracking.
@@ -159,6 +161,7 @@ Publishes a single signed Nostr event to multiple relays concurrently.
 ```
 
 **Response Fields:**
+
 - `results`: Array of per-relay results, one per relay in the request order.
 - Each result contains:
   - `relay`: The relay URL that was attempted.
@@ -169,6 +172,7 @@ Publishes a single signed Nostr event to multiple relays concurrently.
 **Error Responses:**
 
 Invalid request returns HTTP 400 with JSON:
+
 ```json
 {
   "error": "Error message describing the issue"
@@ -176,11 +180,13 @@ Invalid request returns HTTP 400 with JSON:
 ```
 
 **Query Parameters:**
+
 - `?policy=conservative` - Use conservative policy (more retries: 2, longer timeouts: 20s per-relay, 30s overall)
 - `?policy=aggressive` - Use aggressive policy (no retries: 0, shorter timeouts: 5s per-relay, 10s overall)
 - `?policy=default` or omitted - Use default policy (balanced: 1 retry, 10s per-relay, 15s overall)
 
 **Notes:**
+
 - Relay URLs are normalized: `wss://` scheme enforced, whitespace trimmed, trailing slashes removed, deduplicated, capped at 12 relays.
 - Timeout values vary by policy (see [Policy Comparison](docs/API.md#policies) section):
   - **Default policy**: Per-relay timeout: 10s, Overall timeout: 15s
@@ -197,6 +203,7 @@ Invalid request returns HTTP 400 with JSON:
 Publish multiple events to multiple relays in a single request. Supports up to 200 events per batch.
 
 **Request Body:**
+
 ```json
 {
   "events": [
@@ -220,12 +227,14 @@ Publish multiple events to multiple relays in a single request. Supports up to 2
 ```
 
 **Request Fields:**
+
 - `events` (required): Array of signed Nostr events. Maximum 200 events per batch.
 - `relays` (required): Array of relay URLs. Same normalization rules as `/publish`.
 
 **Response:**
 
 Returns HTTP 200 with JSON body:
+
 ```json
 {
   "results": [
@@ -251,9 +260,11 @@ Returns HTTP 200 with JSON body:
 ```
 
 **Query Parameters:**
+
 - Same as `/publish`: `?policy=conservative|aggressive|default`
 
 **Notes:**
+
 - Maximum 200 events per batch request
 - Request size limit: 10MB (10x single request limit)
 - All events are published concurrently with concurrency limits applied
@@ -301,6 +312,7 @@ Returns HTTP 200 with JSON body:
 ```
 
 **Response Fields:**
+
 - `status`: Always `"ok"` for successful health check
 - `timestamp`: ISO 8601 timestamp of the health check
 - `relays`: Array of relay health statuses
@@ -315,16 +327,16 @@ Returns HTTP 200 with JSON body:
 
 All configuration is done through environment variables. Set these in your `wrangler.toml` for production or `.dev.vars` for local development.
 
-| Variable | Required | Default | Description |
-|----------|----------|---------|-------------|
-| `PROFILES` | Yes | - | Cloudflare KV namespace binding for profile caching |
-| `API_TOKEN` | No | - | Secret token for authentication (if set, all requests require `API-TOKEN` header) |
-| `CORS_ENABLED` | No | `false` | Enable CORS support (`"true"` to enable) |
-| `CORS_ORIGINS` | No | - | Comma-separated list of allowed origins (required if `CORS_ENABLED=true`) |
-| `RATE_LIMIT_REQUESTS` | No | `100` | Maximum requests per rate limit window |
-| `RATE_LIMIT_WINDOW_MS` | No | `60000` | Rate limit window size in milliseconds (default: 1 minute) |
-| `METRICS_EXPORT_ENABLED` | No | `false` | Enable metrics export (`"true"` to enable) |
-| `METRICS_EXPORT_INTERVAL_MS` | No | `60000` | Metrics export interval in milliseconds |
+| Variable                     | Required | Default | Description                                                                       |
+| ---------------------------- | -------- | ------- | --------------------------------------------------------------------------------- |
+| `PROFILES`                   | Yes      | -       | Cloudflare KV namespace binding for profile caching                               |
+| `API_TOKEN`                  | No       | -       | Secret token for authentication (if set, all requests require `API-TOKEN` header) |
+| `CORS_ENABLED`               | No       | `false` | Enable CORS support (`"true"` to enable)                                          |
+| `CORS_ORIGINS`               | No       | -       | Comma-separated list of allowed origins (required if `CORS_ENABLED=true`)         |
+| `RATE_LIMIT_REQUESTS`        | No       | `100`   | Maximum requests per rate limit window                                            |
+| `RATE_LIMIT_WINDOW_MS`       | No       | `60000` | Rate limit window size in milliseconds (default: 1 minute)                        |
+| `METRICS_EXPORT_ENABLED`     | No       | `false` | Enable metrics export (`"true"` to enable)                                        |
+| `METRICS_EXPORT_INTERVAL_MS` | No       | `60000` | Metrics export interval in milliseconds                                           |
 
 ### Cloudflare KV Setup
 
@@ -333,12 +345,14 @@ The profile data is cached in [Cloudflare KV](https://developers.cloudflare.com/
 **Setup Steps:**
 
 1. Create KV namespaces:
+
 ```bash
 wrangler kv:namespace create PROFILES
 wrangler kv:namespace create PROFILES --preview
 ```
 
 2. Add bindings to `wrangler.toml`:
+
 ```toml
 [[kv_namespaces]]
 binding = "PROFILES"
@@ -349,6 +363,7 @@ preview_id = "<preview-namespace-id>"
 ### Configuration Examples
 
 **Minimal Configuration (Public Worker):**
+
 ```toml
 # wrangler.toml
 [[kv_namespaces]]
@@ -357,6 +372,7 @@ id = "your-namespace-id"
 ```
 
 **Production Configuration (Protected):**
+
 ```toml
 # wrangler.toml
 [[kv_namespaces]]
@@ -372,6 +388,7 @@ RATE_LIMIT_WINDOW_MS = "60000"
 ```
 
 **Browser Client Configuration:**
+
 ```toml
 [env.production.vars]
 CORS_ENABLED = "true"
@@ -387,15 +404,17 @@ CORS_ORIGINS = "https://app.example.com,https://www.example.com"
    - Add environment variables to `wrangler.toml` or Cloudflare dashboard
 
 2. **Deploy to Cloudflare**
+
    ```bash
    wrangler deploy
    ```
 
 3. **Verify Deployment**
+
    ```bash
    # Test health endpoint
    curl https://your-worker.workers.dev/health
-   
+
    # Test publish endpoint (if API_TOKEN is set)
    curl -X POST https://your-worker.workers.dev/publish \
      -H "Content-Type: application/json" \
@@ -449,6 +468,7 @@ The worker implements a layered architecture:
 ### Data Flow
 
 **Publish Flow:**
+
 1. HTTP request → Request validation & sanitization
 2. Relay URL normalization
 3. Health check filtering (optional)
@@ -459,6 +479,7 @@ The worker implements a layered architecture:
 8. HTTP response with per-relay results
 
 **Profile Flow:**
+
 1. HTTP request → Validation
 2. KV cache check
 3. If cached: return immediately (200)
@@ -477,6 +498,7 @@ The worker implements a layered architecture:
 ### Timeout Handling
 
 Cloudflare Workers have a hard 30-second timeout limit. The system:
+
 - Configures overall timeouts well below 30s (default: 15s, varies by policy)
 - Warns when operations approach 25s threshold
 - Uses per-relay timeouts to prevent individual relays from blocking
@@ -499,7 +521,7 @@ async function publishEvent(event, relays) {
       event,
     }),
   });
-  
+
   const result = await response.json();
   console.log('Publish results:', result);
   return result;
@@ -561,31 +583,37 @@ console.log(`Published ${batchResult.successfulEvents} of ${batchResult.totalEve
 ### Common Issues
 
 **401 Unauthorized / 403 Forbidden**
+
 - **Cause**: Missing or invalid `API-TOKEN` header
 - **Solution**: Ensure `API_TOKEN` is set in environment and included in request headers
 
 **400 Bad Request - Validation Error**
+
 - **Cause**: Invalid request format, missing required fields, or invalid event structure
 - **Solution**: Check request body matches API schema. Verify event has all required fields (`id`, `pubkey`, `kind`, `sig`, `created_at`, `content`, `tags`)
 
 **429 Too Many Requests**
+
 - **Cause**: Rate limit exceeded
 - **Solution**: Wait for rate limit window to reset (check `Retry-After` header) or increase `RATE_LIMIT_REQUESTS`
 
 **Timeout Errors**
+
 - **Cause**: Relays not responding within timeout period
-- **Solution**: 
+- **Solution**:
   - Use conservative policy for unreliable relays
   - Check relay health with `/health` endpoint
   - Reduce number of relays or increase timeout
 
 **Profile Not Found (202 Response)**
+
 - **Cause**: Profile not in cache and async fetch triggered
 - **Solution**: This is expected behavior. Wait a moment and retry the request to get cached profile
 
 ### Debugging Tips
 
 1. **Check Health Status**
+
    ```bash
    curl https://your-worker.workers.dev/health
    ```
@@ -609,7 +637,8 @@ console.log(`Published ${batchResult.successfulEvents} of ${batchResult.totalEve
 A: This worker simplifies integration by providing a standard HTTP API, handles retries and error recovery automatically, and supports concurrent publishing to multiple relays without managing WebSocket connections.
 
 **Q: What's the difference between the policies?**
-A: 
+A:
+
 - **Default**: Balanced approach (1 retry, 10s per-relay timeout)
 - **Conservative**: Maximum reliability (2 retries, 20s per-relay timeout) - use for critical events
 - **Aggressive**: Maximum speed (0 retries, 5s per-relay timeout) - use for high-volume, non-critical events
@@ -649,15 +678,15 @@ A: Default is 100 requests per 60 seconds per IP/API token. Configure via `RATE_
 ```javascript
 try {
   const result = await publishEvent(event, relays);
-  
+
   // Check per-relay results
-  const failed = result.results.filter(r => !r.ok);
+  const failed = result.results.filter((r) => !r.ok);
   if (failed.length > 0) {
     console.warn('Some relays failed:', failed);
   }
-  
+
   // Determine if overall publish succeeded
-  const successCount = result.results.filter(r => r.ok).length;
+  const successCount = result.results.filter((r) => r.ok).length;
   if (successCount === 0) {
     throw new Error('All relays failed');
   }
@@ -718,17 +747,20 @@ pnpm format
 This repository uses [Husky](https://typicode.github.io/husky/) and [lint-staged](https://github.com/lint-staged/lint-staged) to ensure code quality before commits.
 
 **Automatic checks on commit:**
+
 - ESLint with auto-fix on staged TypeScript files
 - Prettier formatting on staged files
 - TypeScript type checking
 
 **Setup:**
+
 ```bash
 # Hooks are automatically set up when you run:
 pnpm install
 ```
 
 The pre-commit hook runs `lint-staged`, which executes:
+
 - `eslint --fix` on staged `.ts` files
 - `prettier --write` on staged files
 
@@ -766,6 +798,7 @@ This repository uses GitHub Actions for continuous integration and deployment.
    - Comments on PR with coverage summary
 
 **Coverage Thresholds:**
+
 - Lines: 85%
 - Functions: 85%
 - Branches: 85%
@@ -783,6 +816,7 @@ The repository includes a comprehensive security test suite in `tests/security/`
 - **Request Size Limits**: DoS prevention via size validation
 
 **Run security tests:**
+
 ```bash
 pnpm test:security
 ```
@@ -819,7 +853,7 @@ This repository maintains high code quality standards:
   - `noPropertyAccessFromIndexSignature`: Requires bracket notation for index signatures
 
 - **ESLint**: Comprehensive linting rules
-  - Stricter TypeScript rules (no-unsafe-* as errors)
+  - Stricter TypeScript rules (no-unsafe-\* as errors)
   - Consistent type imports
   - Promise handling rules
   - Code quality rules (SonarJS, Unicorn)
