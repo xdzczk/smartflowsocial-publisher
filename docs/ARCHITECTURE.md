@@ -14,12 +14,12 @@ graph TB
     Core[Core Business Logic]
     Adapter[Adapter Layer]
     Infrastructure[Infrastructure]
-    
+
     Transport -->|Validated Requests| Core
     Core -->|Protocol Operations| Adapter
     Core -->|Uses| Infrastructure
     Adapter -->|WebSocket Connections| Relays[Relay Servers]
-    
+
     Transport -.->|handlers, mappers, validation| Transport
     Core -.->|PublishEngine, ProfileEngine| Core
     Adapter -.->|NostrRelayAdapter| Adapter
@@ -31,12 +31,14 @@ graph TB
 ### Transport Layer (`src/transport/http/`)
 
 **handlers.ts**
+
 - HTTP request/response handling
 - Request parsing and validation
 - Error response formatting
 - Policy selection from query parameters
 
 **mappers.ts**
+
 - Request/response transformation
 - Error to HTTP response mapping
 - Response header creation
@@ -44,12 +46,14 @@ graph TB
 ### Core Layer (`src/core/`)
 
 **PublishEngine.ts**
+
 - Orchestrates concurrent publishing to multiple relays
 - Manages overall timeouts and concurrency limits
 - Aggregates results and classifies outcomes
 - Health check integration
 
 **RelayPublisher.ts**
+
 - Individual relay connection management
 - Retry logic with exponential backoff
 - Timeout handling (connection and publish)
@@ -59,15 +63,18 @@ graph TB
 - Retry state management integrated with state machine
 
 **ProfileEngine.ts**
+
 - Profile fetching from relays
 - KV cache management
 - Async refresh logic
 
 **BatchPublisher.ts**
+
 - Batch event publishing coordination
 - Concurrent event processing
 
 **EventValidator.ts**
+
 - Nostr event structure validation
 - Signature validation
 - Uses Valibot schemas
@@ -75,17 +82,20 @@ graph TB
 - Compile-time type enforcement
 
 **outcomeClassifier.ts**
+
 - Centralized publish outcome classification
 - Uses policy's success criteria function
 - Consistent outcome classification across all publish modes
 
 **RelayUrl.ts**
+
 - Relay URL normalization
 - Validation and deduplication
 
 ### Adapter Layer (`src/adapters/nostr/`)
 
 **relayAdapter.ts**
+
 - WebSocket connection management
 - Nostr protocol message handling
 - Connection lifecycle
@@ -93,6 +103,7 @@ graph TB
 ### Infrastructure (`src/core/`, `src/middleware/`)
 
 **circuitBreaker.ts**
+
 - Tracks relay failure rates
 - Opens/closes circuits dynamically
 - Prevents cascading failures
@@ -100,6 +111,7 @@ graph TB
 - Circuit state changes update operation state machine
 
 **stateMachine.ts**
+
 - Formal state machine for relay operations
 - Models lifecycle: idle → connecting → publishing → success/failure
 - Handles retry state transitions: failure → retry_eligible → retry_in_progress
@@ -109,21 +121,25 @@ graph TB
 - **Integrated throughout**: Circuit breaker, retry logic, and RelayPublisher all use state machine
 
 **healthCheck.ts**
+
 - Periodic relay health monitoring
 - Health status tracking
 - Influences relay selection
 
 **retry.ts**
+
 - Exponential backoff implementation
 - Configurable retry attempts
 - **Integrated with state machine** for retry state tracking
 - State transitions: failure → retry_eligible → retry_in_progress → success/failure
 
 **rateLimiter.ts**
+
 - Sliding window rate limiting
 - Per-client tracking (IP or API token)
 
 **cors.ts** (middleware)
+
 - CORS header management
 - Origin validation
 - Preflight handling
@@ -131,12 +147,14 @@ graph TB
 ### Policies (`src/policies/`)
 
 Configurable behavior objects:
+
 - **defaultPolicy**: Balanced approach
 - **conservativePolicy**: Reliability-focused
 - **aggressivePolicy**: Speed-focused
 - **ProfilePolicy**: Profile-specific settings
 
 **Policy Success Criteria:**
+
 - Each policy defines a `successCriteria` function
 - Policy encapsulates "what success means"
 - Orchestration uses policy's success criteria (policy-agnostic)
@@ -145,19 +163,23 @@ Configurable behavior objects:
 ### Observability (`src/observability/`)
 
 **logger.ts**
+
 - Structured logging with correlation IDs
 - Multiple logger implementations
 
 **metrics.ts**
+
 - Counter, histogram, gauge metrics
 - Metrics export interface
 
 **tracing.ts**
+
 - Span-based tracing (interface)
 
 ### Security (`src/security/`)
 
 **sanitizer.ts**
+
 - Content size limits
 - Tag validation
 - XSS prevention
@@ -165,6 +187,7 @@ Configurable behavior objects:
 - HTML entity encoding utilities
 
 **replayProtection.ts**
+
 - Event ID tracking in KV store
 - 24-hour TTL for replay records
 - Thread-safe replay detection
@@ -173,6 +196,7 @@ Configurable behavior objects:
 ### Validation (`src/validation/`)
 
 **schemas.ts**
+
 - Valibot schema definitions
 - Request validation
 - Error field extraction
@@ -190,7 +214,7 @@ sequenceDiagram
     participant RelayPublisher
     participant Relay1
     participant Relay2
-    
+
     Client->>Handler: POST /publish
     Handler->>Handler: Request Size Validation
     Handler->>Handler: JSON Parsing
@@ -235,7 +259,7 @@ sequenceDiagram
     participant ProfileEngine
     participant Relay1
     participant Relay2
-    
+
     Client->>Handler: POST /profile
     Handler->>Handler: Validation
     Handler->>KV: Check Cache
@@ -263,6 +287,7 @@ sequenceDiagram
 ### Circuit Breaker
 
 Prevents cascading failures by:
+
 1. Tracking failure rates per relay
 2. Opening circuit after threshold failures
 3. Blocking requests to open circuits
@@ -272,6 +297,7 @@ Prevents cascading failures by:
 ### Retry with Exponential Backoff
 
 Handles transient failures:
+
 1. Configurable max attempts
 2. Exponential delay: `backoffMs * 2^attempt`
 3. Jitter to prevent thundering herd
@@ -280,6 +306,7 @@ Handles transient failures:
 ### Health Checks
 
 Proactive relay monitoring:
+
 1. Tracks consecutive failures
 2. Marks relays as unhealthy after threshold
 3. Filters unhealthy relays from publishing
@@ -288,6 +315,7 @@ Proactive relay monitoring:
 ### Policy Pattern
 
 Configurable behavior via policy objects:
+
 - Different policies for different use cases
 - Query parameter selection
 - Consistent interface across policies
@@ -298,6 +326,7 @@ Configurable behavior via policy objects:
 ### State Machine Pattern
 
 Formal state modeling for relay operations:
+
 - **Explicit States**: idle, connecting, publishing, success, failure, circuit_open, retry_eligible, retry_in_progress
 - **Validated Transitions**: Only valid state transitions are allowed
 - **Circuit Breaker Integration**: Circuit state affects operation state
@@ -307,7 +336,7 @@ Formal state modeling for relay operations:
   - Circuit breaker tracks circuit state via state machine
   - Retry logic tracks retry attempts via state machine
   - RelayPublisher orchestrates entire operation via state machine
-- **Benefits**: 
+- **Benefits**:
   - Explicit state modeling makes behavior predictable
   - Invalid transitions are prevented at runtime
   - State history enables better debugging and observability
@@ -316,6 +345,7 @@ Formal state modeling for relay operations:
 ## Concurrency Model
 
 The system uses a concurrency limiter that:
+
 1. Processes items up to the limit concurrently
 2. Waits for completion when at limit
 3. Cleans up completed promises
@@ -324,6 +354,7 @@ The system uses a concurrency limiter that:
 ## Error Handling
 
 Structured error hierarchy:
+
 - `AppError`: Base error class
 - `ValidationError`: Input validation failures
 - `ReplayError`: Replay protection violations (HTTP 409)
@@ -332,6 +363,7 @@ Structured error hierarchy:
 - `ConfigurationError`: Configuration issues
 
 All errors include:
+
 - Message
 - HTTP status code
 - Optional field (for validation errors)
@@ -339,6 +371,7 @@ All errors include:
 - Optional details object with structured context
 
 **Enhanced Error Context:**
+
 - ReplayError includes TTL information and replay protection details
 - All errors provide structured context in the `details` field
 - Error messages are more descriptive with actionable suggestions
@@ -346,6 +379,7 @@ All errors include:
 ## Timeout Strategy
 
 Multi-level timeout handling:
+
 1. **Connection Timeout**: Time to establish WebSocket connection
 2. **Per-Relay Timeout**: Total time for a single relay operation
 3. **Overall Timeout**: Total time for all relays
@@ -360,7 +394,7 @@ sequenceDiagram
     participant Client
     participant Worker
     participant Env
-    
+
     Client->>Worker: Request with API-TOKEN header
     Worker->>Env: Check API_TOKEN
     alt Token Valid
@@ -373,6 +407,7 @@ sequenceDiagram
 ```
 
 **Authentication Details:**
+
 - If `API_TOKEN` environment variable is set, all requests require `API-TOKEN` header
 - Token comparison is case-sensitive and exact match
 - Missing token returns 403 Forbidden
@@ -409,6 +444,7 @@ sequenceDiagram
 ### Sanitization
 
 **Content Sanitization:**
+
 - Content size limits enforced (1MB maximum)
 - UTF-8 encoding validation
 - Tag structure validation
@@ -417,6 +453,7 @@ sequenceDiagram
 - HTML entity encoding utilities available for rendering contexts
 
 **Tag Validation:**
+
 - Tags must be arrays of strings or numbers
 - Tag structure validated
 - Size limits enforced (1000 tags max, 100 elements per tag, 1000 chars per element)
@@ -426,6 +463,7 @@ sequenceDiagram
 ### Replay Protection
 
 **Replay Protection System:**
+
 - Tracks event IDs in Cloudflare KV (reuses PROFILES namespace)
 - 24-hour TTL for automatic cleanup
 - Thread-safe using KV atomic operations
@@ -434,6 +472,7 @@ sequenceDiagram
 - Returns HTTP 409 Conflict for replay attempts
 
 **Implementation Details:**
+
 - Uses `checkAndRecordEvent()` for atomic check-and-record operations
 - KV key format: `replay:{eventId}`
 - Fail-open design: If KV operations fail, publishing continues (prevents blocking all publishing if KV is down)
@@ -442,12 +481,14 @@ sequenceDiagram
 ### Rate Limiting
 
 **Sliding Window Algorithm:**
+
 - Tracks requests per client identifier (IP or API token)
 - Configurable window size (default: 60 seconds)
 - Configurable request limit (default: 100 requests)
 - Returns `Retry-After` header on rate limit exceeded
 
 **Rate Limit Headers:**
+
 - `Retry-After`: Seconds until rate limit resets (on 429 responses)
 
 ### Request Size Limits
@@ -470,30 +511,33 @@ sequenceDiagram
 
 ### Threat Mitigation
 
-| Threat | Mitigation |
-|--------|------------|
-| Unauthorized Access | API_TOKEN authentication |
-| DoS via Large Payloads | Request size limits (1MB/10MB) |
-| DoS via Request Volume | Rate limiting per client |
-| Invalid Input | Multi-layer validation |
-| XSS Attacks | Content sanitization |
-| Relay Spoofing | URL validation and normalization |
-| Cache Poisoning | KV access controls and validation |
-| Replay Attacks | Event ID tracking with 24-hour TTL |
+| Threat                 | Mitigation                         |
+| ---------------------- | ---------------------------------- |
+| Unauthorized Access    | API_TOKEN authentication           |
+| DoS via Large Payloads | Request size limits (1MB/10MB)     |
+| DoS via Request Volume | Rate limiting per client           |
+| Invalid Input          | Multi-layer validation             |
+| XSS Attacks            | Content sanitization               |
+| Relay Spoofing         | URL validation and normalization   |
+| Cache Poisoning        | KV access controls and validation  |
+| Replay Attacks         | Event ID tracking with 24-hour TTL |
 
 ## Observability
 
 ### Logging
+
 - Structured logging with correlation IDs
 - Request/response logging
 - Error logging with context
 
 ### Metrics
+
 - Counter metrics (success/failure counts)
 - Histogram metrics (latency distributions)
 - Gauge metrics (current state)
 
 ### Tracing
+
 - Span-based tracing interface
 - Operation timing
 - Child span support
@@ -501,6 +545,7 @@ sequenceDiagram
 ## Configuration
 
 Environment variables control:
+
 - API token authentication
 - Rate limiting thresholds
 - CORS origins

@@ -88,7 +88,7 @@ export function normalizeRelayUrls(relays: unknown): RelayUrl[] {
 /**
  * Cleans URLs (similar to cleanURLs from utils)
  * Less strict than normalizeRelayUrls - just validates URL format
- * 
+ *
  * @param urls Array of URL strings to clean
  * @returns Array of valid URL origins
  */

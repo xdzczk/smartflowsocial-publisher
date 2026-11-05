@@ -24,18 +24,12 @@ describe('PublishPolicy', () => {
 
   describe('conservativePolicy', () => {
     it('should be more reliable (slower, higher timeouts)', () => {
-      expect(conservativePolicy.perRelayTimeoutMs).toBeGreaterThan(
-        defaultPolicy.perRelayTimeoutMs
-      );
+      expect(conservativePolicy.perRelayTimeoutMs).toBeGreaterThan(defaultPolicy.perRelayTimeoutMs);
       expect(conservativePolicy.connectionTimeoutMs).toBeGreaterThan(
         defaultPolicy.connectionTimeoutMs
       );
-      expect(conservativePolicy.overallTimeoutMs).toBeGreaterThan(
-        defaultPolicy.overallTimeoutMs
-      );
-      expect(conservativePolicy.minSuccessRelays).toBeGreaterThan(
-        defaultPolicy.minSuccessRelays
-      );
+      expect(conservativePolicy.overallTimeoutMs).toBeGreaterThan(defaultPolicy.overallTimeoutMs);
+      expect(conservativePolicy.minSuccessRelays).toBeGreaterThan(defaultPolicy.minSuccessRelays);
     });
 
     it('should have lower concurrency', () => {
@@ -50,9 +44,7 @@ describe('PublishPolicy', () => {
   describe('aggressivePolicy', () => {
     it('should be faster (lower timeouts)', () => {
       expect(aggressivePolicy.perRelayTimeoutMs).toBeLessThan(defaultPolicy.perRelayTimeoutMs);
-      expect(aggressivePolicy.connectionTimeoutMs).toBeLessThan(
-        defaultPolicy.connectionTimeoutMs
-      );
+      expect(aggressivePolicy.connectionTimeoutMs).toBeLessThan(defaultPolicy.connectionTimeoutMs);
       expect(aggressivePolicy.overallTimeoutMs).toBeLessThan(defaultPolicy.overallTimeoutMs);
     });
 

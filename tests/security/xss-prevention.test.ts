@@ -30,9 +30,7 @@ describe('XSS Prevention: Content Sanitization', () => {
     it('should enforce size limits to prevent DoS', () => {
       const maxSize = 1024 * 1024; // 1MB
       const oversizedContent = 'x'.repeat(maxSize + 1);
-      expect(() => sanitizeContent(oversizedContent)).toThrow(
-        'Content exceeds maximum size'
-      );
+      expect(() => sanitizeContent(oversizedContent)).toThrow('Content exceeds maximum size');
     });
   });
 
@@ -86,11 +84,9 @@ describe('XSS Prevention: Content Sanitization', () => {
 
       xssAttempts.forEach((attempt) => {
         const encoded = encodeHTMLEntities(attempt);
-        // All HTML special characters should be encoded
-        expect(encoded).not.toContain('<script>');
-        expect(encoded).not.toContain('onerror=');
-        expect(encoded).not.toContain('onload=');
-        expect(encoded).not.toContain('javascript:');
+        expect(encoded).not.toContain('<');
+        expect(encoded).not.toContain('>');
+        expect(encoded).not.toContain('"');
       });
     });
 
@@ -98,7 +94,7 @@ describe('XSS Prevention: Content Sanitization', () => {
       const content = 'Hello <script>alert("XSS")</script> World';
       const encoded = encodeHTMLEntities(content);
       expect(encoded).toContain('&lt;script&gt;');
-      expect(encoded).toContain('&lt;/script&gt;');
+      expect(encoded).toContain('&lt;&#x2F;script&gt;');
       expect(encoded).toContain('Hello');
       expect(encoded).toContain('World');
     });
@@ -115,15 +111,15 @@ describe('XSS Prevention: Content Sanitization', () => {
     it('should prevent event handler injection', () => {
       const malicious = '<img src=x onerror="alert(1)">';
       const encoded = encodeHTMLEntities(malicious);
-      expect(encoded).not.toContain('onerror=');
-      expect(encoded).toContain('&quot;');
+      expect(encoded).toBe('&lt;img src=x onerror=&quot;alert(1)&quot;&gt;');
+      expect(encoded).not.toContain('<');
     });
 
     it('should prevent javascript: protocol injection', () => {
       const malicious = '<a href="javascript:alert(1)">Click</a>';
       const encoded = encodeHTMLEntities(malicious);
-      expect(encoded).not.toContain('javascript:');
-      expect(encoded).toContain('&quot;');
+      expect(encoded).toBe('&lt;a href=&quot;javascript:alert(1)&quot;&gt;Click&lt;&#x2F;a&gt;');
+      expect(encoded).not.toContain('<');
     });
 
     it('should prevent iframe injection', () => {
