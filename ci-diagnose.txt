@@ -1,0 +1,28 @@
+=== format:check ===
+
+> nostr-publisher@0.0.0 format:check /home/runner/work/smartflowsocial-publisher/smartflowsocial-publisher
+> prettier --check .
+
+Checking formatting...
+[[33mwarn[39m] .github/workflows/ci-diagnose.yml
+[[33mwarn[39m] Code style issues found in the above file. Run Prettier with --write to fix.
+ ELIFECYCLE  Command failed with exit code 1.
+FORMAT_EXIT:1
+=== lint:ci ===
+
+> nostr-publisher@0.0.0 lint:ci /home/runner/work/smartflowsocial-publisher/smartflowsocial-publisher
+> eslint . --format json --output-file eslint-report.json || exit 1
+
+ ELIFECYCLE  Command failed with exit code 1.
+LINT_EXIT:1
+ESLINT_MESSAGES:4
+/home/runner/work/smartflowsocial-publisher/smartflowsocial-publisher/src/core/PublishEngine.ts:69  Unused eslint-disable directive (no problems were reported from 'promise/prefer-await-to-then').
+/home/runner/work/smartflowsocial-publisher/smartflowsocial-publisher/src/core/PublishEngine.ts:71 promise/prefer-await-to-then Prefer await to then()/catch()/finally().
+/home/runner/work/smartflowsocial-publisher/smartflowsocial-publisher/src/core/PublishEngine.ts:73  Unused eslint-disable directive (no problems were reported from 'promise/prefer-await-to-then').
+/home/runner/work/smartflowsocial-publisher/smartflowsocial-publisher/src/core/PublishEngine.ts:75 promise/prefer-await-to-then Prefer await to then()/catch()/finally().
+=== typecheck ===
+
+> nostr-publisher@0.0.0 typecheck /home/runner/work/smartflowsocial-publisher/smartflowsocial-publisher
+> tsc --noEmit
+
+TYPE_EXIT:0
