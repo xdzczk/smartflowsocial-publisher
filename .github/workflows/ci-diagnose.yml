@@ -1,0 +1,56 @@
+name: CI diagnose
+
+on:
+  push:
+    branches:
+      - ci-diagnose
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.27.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Capture lint, format, and typecheck
+        run: |
+          set +e
+          {
+            echo "=== format:check ==="
+            pnpm format:check
+            echo "FORMAT_EXIT:$?"
+            echo "=== lint:ci ==="
+            pnpm lint:ci
+            echo "LINT_EXIT:$?"
+            if [ -f eslint-report.json ]; then
+              node -e 'const fs=require("fs"); const r=JSON.parse(fs.readFileSync("eslint-report.json","utf8")); const msgs=[]; for (const f of r){ for (const m of f.messages||[]){ msgs.push(`${f.filePath}:${m.line||0} ${m.ruleId||""} ${m.message}`); } } console.log(`ESLINT_MESSAGES:${msgs.length}`); console.log(msgs.slice(0,80).join("\n"));'
+            fi
+            echo "=== typecheck ==="
+            pnpm typecheck
+            echo "TYPE_EXIT:$?"
+          } > ci-diagnose.txt 2>&1
+          exit 0
+
+      - name: Publish the log
+        run: |
+          git config user.name "xdzczk"
+          git config user.email "ivmitko@icloud.com"
+          git add ci-diagnose.txt
+          git commit -m "chore: record ci diagnose log"
+          git push
