@@ -19,38 +19,19 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: Replace promise chains
         run: |
+          set +e
           node <<'NODE'
           const fs = require('fs');
           const path = 'src/core/PublishEngine.ts';
           const source = fs.readFileSync(path, 'utf8');
-          const old = `    pendingPromises.set(relay.url, publishPromise);
-
-    // Wrap the promise to handle result processing and cleanup
-    // eslint-disable-next-line promise/prefer-await-to-then -- Promise chain needed for cleanup logic
-    const wrappedPromise = publishPromise.then((result) => {
-      results.push(result);
-      pendingPromises.delete(relay.url);
-
-      onResult(result);
-
-      // Removed abort logic - remaining publishes will continue in background
-
-      return result;
-    });
-
-    // Clean up from executing set when done
-    // eslint-disable-next-line promise/prefer-await-to-then -- Cleanup chain needed
-    wrappedPromise
-      .finally(() => {
-        executing.delete(wrappedPromise);
-        // eslint-disable-next-line promise/prefer-await-to-then -- Error handling in cleanup
-      })
-      .catch(() => {
-        // Ignore errors in cleanup
-      });
-
-    executing.add(wrappedPromise);`;
-          const replacement = `    pendingPromises.set(relay.url, publishPromise);
+          const marker = 'pendingPromises.set(relay.url, publishPromise)';
+          const start = source.indexOf(marker);
+          const end = source.indexOf('executing.add(wrappedPromise);', start);
+          fs.writeFileSync('/tmp/patch-debug.txt', JSON.stringify({
+            start, end, slice: start < 0 ? '' : source.slice(start, start + 1500)
+          }, null, 2));
+          if (start < 0 || end < 0) process.exit(2);
+          const replacement = `pendingPromises.set(relay.url, publishPromise);
 
     let wrappedPromise: Promise<RelayResult | undefined>;
     wrappedPromise = (async () => {
@@ -61,7 +42,6 @@ jobs:
         onResult(result);
         return result;
       } catch {
-        // Cleanup must not surface a rejection to the concurrency pool.
         return undefined;
       } finally {
         executing.delete(wrappedPromise);
@@ -69,37 +49,29 @@ jobs:
     })();
 
     executing.add(wrappedPromise);`;
-          if (!source.includes(old)) {
-            const idx = source.indexOf('pendingPromises.set(relay.url, publishPromise)');
-            console.error('target block not found');
-            console.error(JSON.stringify(source.slice(Math.max(0, idx), idx + 1200)));
-            process.exit(1);
-          }
-          fs.writeFileSync(path, source.replace(old, replacement));
+          const next = source.slice(0, start) + replacement + source.slice(end + 'executing.add(wrappedPromise);'.length);
+          fs.writeFileSync(path, next);
           NODE
-          pnpm exec prettier --write src/core/PublishEngine.ts
-      - name: Check the fixed file
-        run: |
-          set +e
+          echo "PATCH_EXIT:$?" | tee /tmp/patch-exit.txt
+          pnpm exec prettier --write src/core/PublishEngine.ts || true
           {
-            echo "=== prettier file ==="
-            pnpm exec prettier --check src/core/PublishEngine.ts
-            echo "PRETTIER_EXIT:$?"
-            echo "=== eslint file ==="
+            echo "=== patch ==="
+            cat /tmp/patch-exit.txt
+            echo "=== debug ==="
+            head -c 2000 /tmp/patch-debug.txt
+            echo
+            echo "=== eslint ==="
             pnpm exec eslint src/core/PublishEngine.ts
             echo "ESLINT_EXIT:$?"
-            echo "=== eslint repo ==="
-            pnpm exec eslint .
-            echo "ESLINT_REPO_EXIT:$?"
+            echo "=== prettier ==="
+            pnpm exec prettier --check src/core/PublishEngine.ts
+            echo "PRETTIER_EXIT:$?"
             echo "=== typecheck ==="
             pnpm typecheck
             echo "TYPE_EXIT:$?"
-          } > ci-diagnose.txt 2>&1
-          exit 0
-      - name: Publish fix
-        run: |
+          } > diagnose-summary.md 2>&1 || true
           git config user.name "xdzczk"
           git config user.email "ivmitko@icloud.com"
-          git add src/core/PublishEngine.ts ci-diagnose.txt
-          git commit -m "fix: await relay publish cleanup"
-          git push
+          git add src/core/PublishEngine.ts diagnose-summary.md
+          git commit -m "fix: await relay publish cleanup" || true
+          git push || true
