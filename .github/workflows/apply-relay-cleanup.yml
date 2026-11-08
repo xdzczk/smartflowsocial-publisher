@@ -1,13 +1,14 @@
 name: Apply relay cleanup await
 
 on:
+  pull_request:
   push:
     branches:
       - fix/relay-cleanup-await
 
 jobs:
   apply:
-    if: ${{ !contains(github.event.head_commit.message, 'fix: await relay publish cleanup') }}
+    if: ${{ github.event_name == 'pull_request' || !contains(github.event.head_commit.message, 'fix: await relay publish cleanup') }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -22,7 +23,11 @@ jobs:
           node <<'NODE'
           const fs = require('fs');
           const path = 'src/core/PublishEngine.ts';
-          const source = fs.readFileSync(path, 'utf8');
+          let source = fs.readFileSync(path, 'utf8');
+          if (source.includes('let wrappedPromise!: Promise<RelayResult>')) {
+            console.log('already patched');
+            process.exit(0);
+          }
           const startMarker = '    pendingPromises.set(relay.url, publishPromise);';
           const endMarker = '    executing.add(wrappedPromise);';
           const start = source.indexOf(startMarker);
@@ -30,10 +35,6 @@ jobs:
           if (start < 0 || end < 0) {
             console.error('cleanup block missing', start, end);
             process.exit(1);
-          }
-          if (source.includes('let wrappedPromise!: Promise<RelayResult>')) {
-            console.log('already patched');
-            process.exit(0);
           }
           const replacement = `    pendingPromises.set(relay.url, publishPromise);
 
