@@ -1,0 +1,74 @@
+name: Apply relay cleanup await
+
+on:
+  push:
+    branches:
+      - fix/relay-cleanup-await
+
+jobs:
+  apply:
+    if: ${{ !contains(github.event.head_commit.message, 'fix: await relay publish cleanup') }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: fix/relay-cleanup-await
+
+      - name: Rewrite the relay cleanup chain
+        run: |
+          node <<'NODE'
+          const fs = require('fs');
+          const path = 'src/core/PublishEngine.ts';
+          const source = fs.readFileSync(path, 'utf8');
+          const startMarker = '    pendingPromises.set(relay.url, publishPromise);';
+          const endMarker = '    executing.add(wrappedPromise);';
+          const start = source.indexOf(startMarker);
+          const end = source.indexOf(endMarker, start);
+          if (start < 0 || end < 0) {
+            console.error('cleanup block missing', start, end);
+            process.exit(1);
+          }
+          if (source.includes('let wrappedPromise!: Promise<RelayResult>')) {
+            console.log('already patched');
+            process.exit(0);
+          }
+          const replacement = `    pendingPromises.set(relay.url, publishPromise);
+
+    // Track one promise per relay. Rejection still rejects that promise so
+    // Promise.race observes it, and the pool releases the slot when it settles.
+    let wrappedPromise!: Promise<RelayResult>;
+    wrappedPromise = (async () => {
+      try {
+        const result = await publishPromise;
+        results.push(result);
+        pendingPromises.delete(relay.url);
+        onResult(result);
+        return result;
+      } finally {
+        executing.delete(wrappedPromise);
+      }
+    })();
+
+    executing.add(wrappedPromise);`;
+          const next = source.slice(0, start) + replacement + source.slice(end + endMarker.length);
+          if (next.includes('publishPromise.then((result)')) {
+            console.error('then chain remains');
+            process.exit(1);
+          }
+          fs.writeFileSync(path, next);
+          NODE
+
+      - name: Commit the source fix
+        run: |
+          if git diff --quiet -- src/core/PublishEngine.ts; then
+            echo "no source changes"
+            exit 0
+          fi
+          git config user.name "xdzczk"
+          git config user.email "ivmitko@icloud.com"
+          git add src/core/PublishEngine.ts
+          git commit -m "fix: await relay publish cleanup"
+          git push origin HEAD:fix/relay-cleanup-await
