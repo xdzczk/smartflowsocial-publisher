@@ -18,6 +18,7 @@ Part of SmartFlowSocial. Related pieces: [app](https://github.com/xdzczk/smartfl
 - [Configuration](#configuration)
 - [Deployment](#deployment)
 - [Architecture](#architecture)
+- [Examples](#examples)
 - [Development](#development)
 - [Troubleshooting](#troubleshooting)
 - [FAQ](#faq)
@@ -120,214 +121,14 @@ The service provides four main endpoints:
 
 For complete API documentation with request/response examples, error codes, and detailed field descriptions, see [API.md](docs/API.md).
 
-### Quick Reference
+Limits that match the worker (request and response bodies are in [API.md](docs/API.md)):
 
-#### POST /publish
+- `POST /publish`: at most 12 `wss://` relays after normalization, 1 MB body. `?policy=default` is 10s per relay, 15s overall, 1 retry. `conservative` is 20s / 30s / 2 retries. `aggressive` is 5s / 10s / 0 retries. Default concurrency is 8.
+- `POST /batch`: at most 200 events, 10 MB body, same policies.
+- `POST /profile`: a cached kind-0 profile returns 200. A miss returns 202 and fetches in the background.
+- `GET /health`: known-relay health. No body.
 
-Publishes a single signed Nostr event to multiple relays concurrently.
-
-**Request:**
-
-```json
-{
-  "relays": ["wss://relay.damus.io", "wss://relay.snort.social"],
-  "event": {
-    "id": "event-id",
-    "pubkey": "pubkey",
-    "kind": 1,
-    "sig": "signature",
-    ...
-  },
-  "correlationId": "optional-correlation-id"
-}
-```
-
-**Request Fields:**
-
-- `relays` (required): Array of relay URLs. Must use `wss://` scheme. URLs are normalized (trimmed, deduplicated, max 12 relays).
-- `event` (required): Signed Nostr event JSON with required fields: `id`, `pubkey`, `kind`, `sig`.
-- `correlationId` (optional): Correlation ID for tracking.
-
-**Response (200 OK):**
-
-```json
-{
-  "results": [
-    {
-      "relay": "wss://relay.damus.io",
-      "ok": true,
-      "latencyMs": 123
-    },
-    {
-      "relay": "wss://relay.snort.social",
-      "ok": false,
-      "latencyMs": 2500,
-      "error": "TIMEOUT"
-    }
-  ]
-}
-```
-
-**Response Fields:**
-
-- `results`: Array of per-relay results, one per relay in the request order.
-- Each result contains:
-  - `relay`: The relay URL that was attempted.
-  - `ok`: `true` if relay accepted (ACK), `false` otherwise.
-  - `latencyMs`: Time taken in milliseconds.
-  - `error`: Optional error message (e.g., "TIMEOUT", "RELAY_REJECTED", "CONNECTION_ERROR").
-
-**Error Responses:**
-
-Invalid request returns HTTP 400 with JSON:
-
-```json
-{
-  "error": "Error message describing the issue"
-}
-```
-
-**Query Parameters:**
-
-- `?policy=conservative` - Use conservative policy (more retries: 2, longer timeouts: 20s per-relay, 30s overall)
-- `?policy=aggressive` - Use aggressive policy (no retries: 0, shorter timeouts: 5s per-relay, 10s overall)
-- `?policy=default` or omitted - Use default policy (balanced: 1 retry, 10s per-relay, 15s overall)
-
-**Notes:**
-
-- Relay URLs are normalized: `wss://` scheme enforced, whitespace trimmed, trailing slashes removed, deduplicated, capped at 12 relays.
-- Timeout values vary by policy (see [Policy Comparison](docs/API.md#policies) section):
-  - **Default policy**: Per-relay timeout: 10s, Overall timeout: 15s
-  - **Conservative policy**: Per-relay timeout: 20s, Overall timeout: 30s
-  - **Aggressive policy**: Per-relay timeout: 5s, Overall timeout: 10s
-- Cloudflare Workers have a hard 30-second absolute limit (system warns at 25s)
-- Concurrency limit: 8 concurrent publishes (default policy)
-- Request size limit: 1MB
-- Results are returned even if some relays fail (as long as request is valid).
-- Response includes `X-Request-ID` header with correlation ID for tracing
-
-#### POST /batch
-
-Publish multiple events to multiple relays in a single request. Supports up to 200 events per batch.
-
-**Request Body:**
-
-```json
-{
-  "events": [
-    {
-      "id": "event-id-1",
-      "pubkey": "pubkey",
-      "kind": 1,
-      "sig": "signature-1",
-      ...
-    },
-    {
-      "id": "event-id-2",
-      "pubkey": "pubkey",
-      "kind": 1,
-      "sig": "signature-2",
-      ...
-    }
-  ],
-  "relays": ["wss://relay.damus.io", "wss://relay.snort.social"]
-}
-```
-
-**Request Fields:**
-
-- `events` (required): Array of signed Nostr events. Maximum 200 events per batch.
-- `relays` (required): Array of relay URLs. Same normalization rules as `/publish`.
-
-**Response:**
-
-Returns HTTP 200 with JSON body:
-
-```json
-{
-  "results": [
-    {
-      "eventId": "event-id-1",
-      "outcome": {
-        "status": "success",
-        "relays": [...]
-      }
-    },
-    {
-      "eventId": "event-id-2",
-      "outcome": {
-        "status": "partial",
-        "relays": [...]
-      }
-    }
-  ],
-  "totalEvents": 2,
-  "successfulEvents": 1,
-  "failedEvents": 1
-}
-```
-
-**Query Parameters:**
-
-- Same as `/publish`: `?policy=conservative|aggressive|default`
-
-**Notes:**
-
-- Maximum 200 events per batch request
-- Request size limit: 10MB (10x single request limit)
-- All events are published concurrently with concurrency limits applied
-- Each event's outcome is tracked independently
-
-#### POST /profile
-
-Retrieve a Nostr profile (kind 0 event) for a given pubkey. Returns cached profile immediately (200) or triggers async fetch (202).
-
-```json
-{
-  "relays": ["relay.damus.io", "relay.snort.social"],
-  "pubkey": "profile-pubkey"
-}
-```
-
-If a profile is already cached it will return with `HTTP status 200`.
-
-If a profile is NOT already cached it will return with `HTTP status 202` and query the profile asynchronously.
-
-#### GET /health
-
-Returns health status of all known relays. Useful for monitoring and debugging relay connectivity.
-
-**Request:**
-No body required. GET request to `/health` endpoint.
-
-**Response:**
-
-Returns HTTP 200 with JSON body:
-
-```json
-{
-  "status": "ok",
-  "timestamp": "2024-01-01T00:00:00.000Z",
-  "relays": [
-    {
-      "relay": "wss://relay.damus.io",
-      "healthy": true,
-      "lastChecked": 1234567890,
-      "consecutiveFailures": 0
-    }
-  ]
-}
-```
-
-**Response Fields:**
-
-- `status`: Always `"ok"` for successful health check
-- `timestamp`: ISO 8601 timestamp of the health check
-- `relays`: Array of relay health statuses
-  - `relay`: The relay URL
-  - `healthy`: Boolean indicating if relay is currently healthy
-  - `lastChecked`: Unix timestamp of last health check
-  - `consecutiveFailures`: Number of consecutive failures
+Cloudflare Workers stop the isolate at 30 seconds. The worker warns at 25 seconds. A partial relay failure is still HTTP 200 when the request itself is valid. Responses include `X-Request-ID`.
 
 ## Configuration
 
@@ -453,6 +254,14 @@ For more details, see the [Cloudflare Workers documentation](https://developers.
 ## Architecture
 
 ### System Overview
+
+```mermaid
+flowchart LR
+  client[Client] --> http[HTTP handlers]
+  http --> engine[PublishEngine]
+  engine --> relays[Nostr relays]
+  http --> kv[Profiles KV]
+```
 
 The worker implements a layered architecture:
 
@@ -758,7 +567,8 @@ This repository uses [Husky](https://typicode.github.io/husky/) and [lint-staged
 
 - ESLint with auto-fix on staged TypeScript files
 - Prettier formatting on staged files
-- TypeScript type checking
+
+`pnpm typecheck` runs in CI. The pre-commit hook does not typecheck.
 
 **Setup:**
 
