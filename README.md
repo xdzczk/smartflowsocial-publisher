@@ -1,8 +1,14 @@
-# HTTP to Nostr Cloudflare Worker
+# SmartFlowSocial Publisher
 
-A production-ready [Cloudflare Worker](https://workers.cloudflare.com/) that provides an HTTP interface for publishing Nostr events to multiple relays concurrently. No WebSocket integration required—just simple HTTP requests.
+[![CI](https://github.com/xdzczk/smartflowsocial-publisher/actions/workflows/ci.yml/badge.svg)](https://github.com/xdzczk/smartflowsocial-publisher/actions/workflows/ci.yml)
+[![License: Unlicense](https://img.shields.io/badge/license-Unlicense-blue)](LICENSE)
+[![Node 20+](https://img.shields.io/badge/node-20%2B-339933?logo=node.js&logoColor=white)](https://nodejs.org/)
 
-> 📖 **Documentation**: For complete API reference, see [API.md](docs/API.md). For architecture details, see [ARCHITECTURE.md](docs/ARCHITECTURE.md).
+HTTP publisher for [SmartFlowSocial](https://smartflow.social). A Cloudflare Worker that accepts signed Nostr events over HTTP and publishes them to relays, with retries, circuit breakers, and rate limits. No WebSocket client is required.
+
+Part of SmartFlowSocial. Related pieces: [app](https://github.com/xdzczk/smartflowsocial), [Blastr](https://github.com/xdzczk/smartflowsocial-blastr), [Blossom](https://github.com/xdzczk/smartflowsocial-blossom), [cache worker](https://github.com/xdzczk/smartflowsocial-cache-worker).
+
+> Documentation: API reference in [docs/API.md](docs/API.md). Architecture in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## Table of Contents
 
@@ -16,6 +22,8 @@ A production-ready [Cloudflare Worker](https://workers.cloudflare.com/) that pro
 - [Troubleshooting](#troubleshooting)
 - [FAQ](#faq)
 - [Best Practices](#best-practices)
+- [Contributing](#contributing)
+- [License](#license)
 
 ## Features
 
@@ -40,8 +48,8 @@ A production-ready [Cloudflare Worker](https://workers.cloudflare.com/) that pro
 
 ```bash
 # Clone the repository
-git clone <repository-url>
-cd vibe-http-nostr-publisher
+git clone https://github.com/xdzczk/smartflowsocial-publisher.git
+cd smartflowsocial-publisher
 
 # Install dependencies
 pnpm install
@@ -863,3 +871,11 @@ This repository maintains high code quality standards:
 - **CI/CD**: Automated testing and quality checks on every PR
 
 - **Test Coverage**: 85% threshold for lines, functions, branches, and statements
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md). This project follows the [Code of Conduct](CODE_OF_CONDUCT.md). Report security issues through [SECURITY.md](SECURITY.md).
+
+## License
+
+Released into the public domain under the [Unlicense](LICENSE).

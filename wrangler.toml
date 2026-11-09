@@ -21,5 +21,5 @@ head_sampling_rate = 1
 # KV namespace bindings
 [[kv_namespaces]]
 binding = "PROFILES"
-id = "09f055c2671d4bf3a73a958a6a72cbea"
-preview_id = "64fa8e6497904ac39f7f12299e5e8697"
+id = "REPLACE_WITH_PROFILES_KV_ID"
+preview_id = "REPLACE_WITH_PROFILES_KV_PREVIEW_ID"

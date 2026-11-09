@@ -4,6 +4,7 @@ import { classifyPublishOutcome } from '../../src/core/outcomeClassifier';
 import { aggressivePolicy } from '../../src/policies/aggressivePolicy';
 import { conservativePolicy } from '../../src/policies/conservativePolicy';
 import { defaultPolicy } from '../../src/policies/defaultPolicy';
+import type { PublishPolicy } from '../../src/policies/PublishPolicy';
 import { createRelayResult } from '../utils/fixtures';
 
 const RELAY1_URL = 'wss://relay1.com';
@@ -102,6 +103,28 @@ describe('outcomeClassifier', () => {
       const outcome = classifyPublishOutcome(results, defaultPolicy);
       expect(outcome.status).toBe('failed');
       expect(outcome.relays).toEqual(results);
+    });
+
+    it('falls back to minSuccessRelays when a policy has no success function', () => {
+      const legacy: PublishPolicy = { ...defaultPolicy, minSuccessRelays: 2 };
+      Reflect.deleteProperty(legacy, 'successCriteria');
+      const oneSuccess = [
+        createRelayResult(RELAY1_URL, { status: 'success' }),
+        createRelayResult(RELAY2_URL, { status: 'failure' }),
+      ];
+      const twoSuccesses = [
+        createRelayResult(RELAY1_URL, { status: 'success' }),
+        createRelayResult(RELAY2_URL, { status: 'success' }),
+      ];
+
+      expect(classifyPublishOutcome(oneSuccess, legacy).status).toBe('failed');
+      expect(classifyPublishOutcome(twoSuccesses, legacy).status).toBe('success');
+      expect(
+        classifyPublishOutcome(
+          [...twoSuccesses, createRelayResult(RELAY3_URL, { status: 'failure' })],
+          { ...legacy, minSuccessRelays: 1 }
+        ).status
+      ).toBe('partial');
     });
   });
 });
