@@ -52,29 +52,28 @@ async function publishWithEarlyReturn(
 
     pendingPromises.set(relay.url, publishPromise);
 
-    // Wrap the promise to handle result processing and cleanup
-    // eslint-disable-next-line promise/prefer-await-to-then -- Promise chain needed for cleanup logic
-    const wrappedPromise = publishPromise.then((result) => {
-      results.push(result);
-      pendingPromises.delete(relay.url);
+    // Record the result, then drop this publish from the in-flight set.
+    // Await yields before the finally block, so tracked.promise is set first.
+    // The promise still rejects on failure, so Promise.race surfaces it.
+    const tracked: { promise?: Promise<RelayResult> } = {};
+    const wrappedPromise = (async () => {
+      try {
+        const result = await publishPromise;
+        results.push(result);
+        pendingPromises.delete(relay.url);
 
-      onResult(result);
+        onResult(result);
 
-      // Removed abort logic - remaining publishes will continue in background
+        // Removed abort logic - remaining publishes will continue in background
 
-      return result;
-    });
-
-    // Clean up from executing set when done
-    // eslint-disable-next-line promise/prefer-await-to-then -- Cleanup chain needed
-    wrappedPromise
-      .finally(() => {
-        executing.delete(wrappedPromise);
-        // eslint-disable-next-line promise/prefer-await-to-then -- Error handling in cleanup
-      })
-      .catch(() => {
-        // Ignore errors in cleanup
-      });
+        return result;
+      } finally {
+        if (tracked.promise) {
+          executing.delete(tracked.promise);
+        }
+      }
+    })();
+    tracked.promise = wrappedPromise;
 
     executing.add(wrappedPromise);
   };

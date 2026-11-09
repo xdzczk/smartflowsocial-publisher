@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
-import { ValidationError } from '../../../src/core/errors';
+import { RelayError, ReplayError, TimeoutError, ValidationError } from '../../../src/core/errors';
+import type { RelayUrl } from '../../../src/core/types';
 import {
+  createResponseHeaders,
   mapErrorToResponse,
   mapPublishOutcomeToResponse,
   parsePublishRequest,
@@ -12,6 +14,12 @@ const RELAY1_URL = 'wss://relay1.example.com';
 const RELAY2_URL = 'wss://relay2.example.com';
 
 describe('HTTP Mappers', () => {
+  it('omits the response time when the caller does not provide a start time', () => {
+    const headers = createResponseHeaders('only-id');
+    expect(headers.get('X-Request-ID')).toBe('only-id');
+    expect(headers.get('X-Response-Time')).toBeNull();
+    expect(createResponseHeaders().get('X-Request-ID')).toBeNull();
+  });
   describe('parsePublishRequest', () => {
     it('should parse valid request', () => {
       const event = createSignedEvent();
@@ -67,10 +75,10 @@ describe('HTTP Mappers', () => {
       const body = {
         relays: ['wss://relay.example.com'],
         event: {
-          id: 'a'.repeat(64), // Valid hex
-          pubkey: 'b'.repeat(64), // Valid hex
+          id: 'a'.repeat(64),
+          pubkey: 'b'.repeat(64),
           kind: 1,
-          sig: '', // Empty = unsigned
+          sig: '',
           created_at: Date.now(),
           content: 'test',
           tags: [],
@@ -81,7 +89,6 @@ describe('HTTP Mappers', () => {
         parsePublishRequest(body);
       } catch (error) {
         expect(error).toBeInstanceOf(ValidationError);
-        // Field could be 'event.sig' or 'event' depending on validation order
         expect(['event.sig', 'event']).toContain((error as ValidationError).field);
       }
     });
@@ -170,6 +177,25 @@ describe('HTTP Mappers', () => {
       expect(response.code).toBe('VALIDATION_ERROR');
       expect(response.field).toBe('field1');
       expect(status).toBe(400);
+    });
+
+    it('maps relay, timeout, and replay errors', () => {
+      const relay = mapErrorToResponse(
+        new RelayError('down', RELAY1_URL as RelayUrl, 'unreachable')
+      );
+      expect(relay.response.details).toMatchObject({ relay: RELAY1_URL, reason: 'unreachable' });
+
+      const timeout = mapErrorToResponse(new TimeoutError('slow', 25));
+      expect(timeout.response.details).toMatchObject({ timeoutMs: 25 });
+      expect(mapErrorToResponse(new TimeoutError('slow')).response.details).toBeUndefined();
+
+      const replay = mapErrorToResponse(new ReplayError('again', 'event-1'));
+      expect(replay.status).toBe(409);
+      expect(replay.response.details).toMatchObject({ eventId: 'event-1' });
+
+      const bare = mapErrorToResponse(new ValidationError('missing'));
+      expect(bare.response.field).toBeUndefined();
+      expect(bare.response.suggestion).toBeUndefined();
     });
 
     it('should map string to response', () => {

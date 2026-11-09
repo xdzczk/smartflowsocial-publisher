@@ -71,10 +71,10 @@ jobs:
             for (const [metric, threshold] of Object.entries(thresholds)) {
               const actual = total[metric].pct;
               if (actual < threshold) {
-                console.error(\`❌ \${metric}: \${actual.toFixed(2)}% < \${threshold}%\`);
+                console.error(`❌ ${metric}: ${actual.toFixed(2)}% < ${threshold}%`);
                 failed = true;
               } else {
-                console.log(\`✅ \${metric}: \${actual.toFixed(2)}% >= \${threshold}%\`);
+                console.log(`✅ ${metric}: ${actual.toFixed(2)}% >= ${threshold}%`);
               }
             }
             if (failed) {
