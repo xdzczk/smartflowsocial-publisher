@@ -4,6 +4,7 @@ import { aggressivePolicy } from '../../src/policies/aggressivePolicy';
 import { conservativePolicy } from '../../src/policies/conservativePolicy';
 import { defaultPolicy } from '../../src/policies/defaultPolicy';
 import type { PublishPolicy } from '../../src/policies/PublishPolicy';
+import { createRelayResult } from '../utils/fixtures';
 
 describe('PublishPolicy', () => {
   describe('defaultPolicy', () => {
@@ -89,6 +90,24 @@ describe('PublishPolicy', () => {
         expect(policy.retry).toHaveProperty('maxAttempts');
         expect(policy.retry).toHaveProperty('backoffMs');
       });
+    });
+  });
+
+  describe('success criteria', () => {
+    const success = createRelayResult('wss://a.example', { status: 'success' });
+    const failure = createRelayResult('wss://b.example', { status: 'failure' });
+
+    it('classifies aggressive results as success, partial, or failed', () => {
+      expect(aggressivePolicy.successCriteria([success]).status).toBe('success');
+      expect(aggressivePolicy.successCriteria([success, failure]).status).toBe('partial');
+      expect(aggressivePolicy.successCriteria([failure]).status).toBe('failed');
+    });
+
+    it('requires every conservative relay to succeed for a full success', () => {
+      expect(conservativePolicy.successCriteria([success, success]).status).toBe('success');
+      expect(conservativePolicy.successCriteria([success, failure, success]).status).toBe(
+        'partial'
+      );
     });
   });
 });

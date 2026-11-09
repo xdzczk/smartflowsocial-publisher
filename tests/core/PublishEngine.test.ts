@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { publishSignedEvent } from '../../src/core/PublishEngine';
+import { publishSignedEvent, publishSignedEventStreaming } from '../../src/core/PublishEngine';
 import type { PublishPolicy } from '../../src/policies/PublishPolicy';
 import { createSignedEvent } from '../utils/fixtures';
 import { MockRelay, MockRelayConnection } from '../utils/mocks';
@@ -61,7 +61,6 @@ describe('PublishEngine', () => {
       const logger = createMockLogger();
       const event = createSignedEvent();
 
-      // Create relay with connection that fails on publish
       const connection = new MockRelayConnection({
         shouldFailPublish: true,
         publishError: new Error('Publish failed'),
@@ -99,7 +98,6 @@ describe('PublishEngine', () => {
       const logger = createMockLogger();
       const event = createSignedEvent();
 
-      // Create 3 relays, make relay2 fail
       const relay1 = new MockRelay(RELAY1_URL);
       const connection2 = new MockRelayConnection({
         shouldFailPublish: true,
@@ -138,7 +136,6 @@ describe('PublishEngine', () => {
       };
       const event = createSignedEvent();
 
-      // Create 3 relays, make relay3 fail
       const relay1 = new MockRelay(RELAY1_URL);
       const relay2 = new MockRelay(RELAY2_URL);
       const connection3 = new MockRelayConnection({
@@ -163,7 +160,6 @@ describe('PublishEngine', () => {
       const logger = createMockLogger();
       const event = createSignedEvent();
 
-      // Create relays that all fail
       const connection1 = new MockRelayConnection({
         shouldFailPublish: true,
         publishError: new Error('Failed'),
@@ -203,7 +199,6 @@ describe('PublishEngine', () => {
       };
       const event = createSignedEvent();
 
-      // Create 3 relays, make relay3 fail
       const relay1 = new MockRelay(RELAY1_URL);
       const relay2 = new MockRelay(RELAY2_URL);
       const connection3 = new MockRelayConnection({
@@ -232,7 +227,6 @@ describe('PublishEngine', () => {
         relayConcurrency: 2,
       };
       const relays = createMockRelays([RELAY1_URL, RELAY2_URL, RELAY3_URL, RELAY4_URL]);
-      // Add delays to track concurrency
       relays.forEach((relay) => {
         const connection = relay.getConnection();
         if (connection) {
@@ -242,14 +236,11 @@ describe('PublishEngine', () => {
       const event = createSignedEvent();
 
       const promise = publishSignedEvent(event, relays, policy, logger);
-      // Advance timers to see concurrency in action
       vi.advanceTimersByTime(50);
-      // At this point, only 2 should be executing (concurrency limit)
       vi.advanceTimersByTime(200);
       const outcome = await promise;
 
       expect(outcome.relays).toHaveLength(4);
-      // All should eventually complete
       outcome.relays.forEach((r) => {
         expect(['success', 'failure']).toContain(r.status);
       });
@@ -262,23 +253,21 @@ describe('PublishEngine', () => {
       const policy: PublishPolicy = {
         ...testPolicy,
         overallTimeoutMs: 500,
-        perRelayTimeoutMs: 2000, // Longer than overall timeout
+        perRelayTimeoutMs: 2000,
       };
       const relays = createMockRelays([RELAY1_URL, RELAY2_URL]);
-      // Make relays slow
       relays.forEach((relay) => {
         const connection = relay.getConnection();
         if (connection) {
-          connection.publishDelay = 1000; // Longer than overall timeout
+          connection.publishDelay = 1000;
         }
       });
       const event = createSignedEvent();
 
       const promise = publishSignedEvent(event, relays, policy, logger);
-      vi.advanceTimersByTime(600); // Past overall timeout
+      vi.advanceTimersByTime(600);
       const outcome = await promise;
 
-      // Should have timeout results for relays that didn't complete
       const timeoutResults = outcome.relays.filter(
         (r) => r.reason === 'timeout' || r.error === 'TIMEOUT'
       );
@@ -342,6 +331,39 @@ describe('PublishEngine', () => {
       await promise;
 
       expect(logger.infoLogs.some((log) => log.join(' ').includes('Publish completed'))).toBe(true);
+    });
+  });
+
+  describe('streaming publish', () => {
+    it('should stream each relay result and return the final outcome', async () => {
+      const logger = createMockLogger();
+      const relays = createMockRelays([RELAY1_URL, RELAY2_URL]);
+      const event = createSignedEvent();
+      const streamed: string[] = [];
+
+      const promise = publishSignedEventStreaming(event, relays, testPolicy, logger, (result) => {
+        streamed.push(result.relay);
+      });
+      await vi.runAllTimersAsync();
+      const outcome = await promise;
+
+      expect(outcome.status).toBe('success');
+      expect(streamed).toEqual([RELAY1_URL, RELAY2_URL]);
+      expect(logger.infoLogs.some((log) => log.join(' ').includes('streaming publish'))).toBe(true);
+    });
+
+    it('should return failed when streaming to no relays', async () => {
+      const logger = createMockLogger();
+      const event = createSignedEvent();
+
+      const promise = publishSignedEventStreaming(event, [], testPolicy, logger, () => {
+        throw new Error('callback should not run');
+      });
+      await vi.runAllTimersAsync();
+      const outcome = await promise;
+
+      expect(outcome.status).toBe('failed');
+      expect(outcome.relays).toHaveLength(0);
     });
   });
 });
