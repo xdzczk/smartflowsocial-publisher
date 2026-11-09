@@ -80,7 +80,7 @@ jobs:
             const fs = require('fs');
             const coverage = JSON.parse(fs.readFileSync('coverage/coverage-summary.json', 'utf8'));
             const total = coverage.total;
-            const thresholds = { lines: 60, functions: 62, branches: 51, statements: 60 };
+            const thresholds = { lines: 85, functions: 85, branches: 85, statements: 85 };
             let failed = false;
             for (const [metric, threshold] of Object.entries(thresholds)) {
               const actual = total[metric].pct;
@@ -111,7 +111,7 @@ jobs:
               comment += '| Metric | Coverage | Threshold | Status |\n';
               comment += '|--------|----------|-----------|--------|\n';
               
-              const thresholds = { lines: 60, functions: 62, branches: 51, statements: 60 };
+              const thresholds = { lines: 85, functions: 85, branches: 85, statements: 85 };
               for (const [metric, threshold] of Object.entries(thresholds)) {
                 const actual = total[metric].pct;
                 const status = actual >= threshold ? '✅' : '❌';
