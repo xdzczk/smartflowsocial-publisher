@@ -8,6 +8,7 @@ import type { Env } from '../../../src/types';
 import { createSignedEvent } from '../../utils/fixtures';
 import { readJson } from '../../utils/readJson';
 
+// Mock the core engines
 vi.mock('../../../src/core/PublishEngine', () => ({
   publishSignedEvent: vi.fn(async () => ({
     status: 'success' as const,
@@ -97,10 +98,14 @@ describe('HTTP Handlers', () => {
       const response = await publishHandler(request, mockEnv, mockCtx);
       expect(response.status).toBe(200);
 
+      // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion -- Type assertion needed for TypeScript strict mode
       const body = (await response.json()) as { results: unknown[] };
       expect(body.results).toBeDefined();
       expect(Array.isArray(body.results)).toBe(true);
-      expect(body.results.length).toBeGreaterThan(0);
+
+      const results = body.results;
+
+      expect(results.length).toBeGreaterThan(0);
     });
 
     it('should return 400 for invalid request', async () => {
@@ -114,6 +119,8 @@ describe('HTTP Handlers', () => {
 
       const response = await publishHandler(request, mockEnv, mockCtx);
       expect(response.status).toBe(400);
+
+      // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion -- Type assertion needed for TypeScript strict mode
       const body = (await response.json()) as { error: unknown };
       expect(body.error).toBeDefined();
     });
@@ -253,6 +260,7 @@ describe('HTTP Handlers', () => {
   describe('profileHandler', () => {
     it('should return 200 for cached profile', async () => {
       const cachedProfile = createSignedEvent({ kind: 0 });
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access -- Mock typing needed for test
       (mockEnv.PROFILES.getWithMetadata as any).mockResolvedValue({
         value: JSON.stringify(cachedProfile),
         metadata: { createdAt: Date.now() },
@@ -275,6 +283,7 @@ describe('HTTP Handlers', () => {
     });
 
     it('should return 202 for uncached profile', async () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access -- Mock typing needed for test
       (mockEnv.PROFILES.getWithMetadata as any).mockResolvedValue({
         value: null,
         metadata: null,
@@ -291,6 +300,7 @@ describe('HTTP Handlers', () => {
 
       const response = await profileHandler(request, mockEnv, mockCtx);
       expect(response.status).toBe(202);
+
       expect(mockCtx.waitUntil).toHaveBeenCalled();
     });
 
@@ -308,7 +318,8 @@ describe('HTTP Handlers', () => {
     });
 
     it('should refresh stale cache in background', async () => {
-      const staleTime = Date.now() - 4 * 60 * 60 * 1000;
+      const staleTime = Date.now() - 4 * 60 * 60 * 1000; // 4 hours ago
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access -- Mock typing needed for test
       (mockEnv.PROFILES.getWithMetadata as any).mockResolvedValue({
         value: JSON.stringify(createSignedEvent({ kind: 0 })),
         metadata: { createdAt: staleTime },
