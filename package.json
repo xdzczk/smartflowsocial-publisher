@@ -1,6 +1,17 @@
 {
   "name": "nostr-publisher",
   "version": "0.0.0",
+  "description": "HTTP publisher for SmartFlowSocial. Accepts signed Nostr events and publishes them to relays.",
+  "author": "SmartFlowSocial",
+  "license": "Unlicense",
+  "homepage": "https://smartflow.social",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/xdzczk/smartflowsocial-publisher.git"
+  },
+  "bugs": {
+    "url": "https://github.com/xdzczk/smartflowsocial-publisher/issues"
+  },
   "packageManager": "pnpm@10.27.0",
   "engines": {
     "node": ">=20.0.0"
