@@ -1,11 +1,20 @@
-import * as bech32 from 'bech32';
+import bech32Module from 'bech32';
+
+interface BechCodec {
+  decode: (value: string, limit?: number) => { words: number[] };
+  fromWords: (words: number[]) => number[];
+}
+
+function bech32Codec(moduleValue: BechCodec & { bech32?: BechCodec }): BechCodec {
+  return moduleValue.bech32 ?? moduleValue;
+}
 
 /**
  * Decodes bech32 string to hex or utf-8
  */
 const bech32Decode = (str: string, encoding: 'utf-8' | 'hex' = 'utf-8'): string => {
-  const { words: dataPart } = bech32.decode(str, 2000);
-  const requestByteArray = bech32.fromWords(dataPart);
+  const { words: dataPart } = bech32Codec(bech32Module).decode(str, 2000);
+  const requestByteArray = bech32Codec(bech32Module).fromWords(dataPart);
   return Buffer.from(requestByteArray).toString(encoding);
 };
 
