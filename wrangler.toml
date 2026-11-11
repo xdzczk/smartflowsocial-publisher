@@ -18,8 +18,7 @@ enabled = false
 persist = true
 head_sampling_rate = 1
 
-# KV namespace bindings
+# KV namespace bindings. Wrangler 4 provisions this namespace on deploy.
+# The id stays in the Cloudflare account, not in this file.
 [[kv_namespaces]]
 binding = "PROFILES"
-id = "REPLACE_WITH_PROFILES_KV_ID"
-preview_id = "REPLACE_WITH_PROFILES_KV_PREVIEW_ID"
