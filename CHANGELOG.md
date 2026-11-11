@@ -19,7 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Timeout warnings when operations approach Cloudflare Workers 30s limit
 - Comprehensive API documentation (`docs/API.md`)
 - Architecture documentation (`docs/ARCHITECTURE.md`)
-- Environment variable example file (`.env.example`)
+- `wrangler.toml` ships KV ids as `REPLACE_WITH_PROFILES_KV_ID` and `REPLACE_WITH_PROFILES_KV_PREVIEW_ID`. Replace them before `wrangler deploy`.
 
 ### Changed
 
