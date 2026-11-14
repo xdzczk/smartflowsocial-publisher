@@ -6,7 +6,7 @@ import { ReplayError, ValidationError } from '../../core/errors';
 import { fetchProfile } from '../../core/ProfileEngine';
 import { publishSignedEvent, publishSignedEventStreaming } from '../../core/PublishEngine';
 import type { Relay } from '../../core/Relay';
-import { normalizeRelayUrls } from '../../core/RelayUrl';
+import { normalizeRelayUrls, type NormalizeRelayOptions } from '../../core/RelayUrl';
 import type { SignedEvent } from '../../core/types';
 import type { Logger } from '../../observability/logger';
 import { ConsoleLogger } from '../../observability/logger';
@@ -17,6 +17,7 @@ import { conservativePolicy } from '../../policies/conservativePolicy';
 import { defaultPolicy } from '../../policies/defaultPolicy';
 import { defaultProfilePolicy } from '../../policies/ProfilePolicy';
 import type { PublishPolicy } from '../../policies/PublishPolicy';
+import { assertEventSignature } from '../../security/eventSignature';
 import { checkAndRecordEvent } from '../../security/replayProtection';
 import type { Env } from '../../types';
 import { validateProfileRequest } from '../../validation/schemas';
@@ -250,7 +251,8 @@ export async function publishHandler(
       throw error;
     }
 
-    const { event, relayUrls } = parsePublishRequest(body);
+    const { event, relayUrls } = parsePublishRequest(body, relayOptionsFromEnv(env));
+    assertEventSignature(event);
 
     // Replay protection: check if event has already been published
     const isReplay = await checkAndRecordEvent(event.id, env.PROFILES);
@@ -370,10 +372,15 @@ async function validateAndReadRequestBody(
  * Validates and normalizes profile request
  * Extracted to reduce cognitive complexity
  */
+function relayOptionsFromEnv(env: Env): NormalizeRelayOptions {
+  return { allowPrivateNetworks: env.ALLOW_PRIVATE_RELAYS === 'true' };
+}
+
 async function validateAndNormalizeProfileRequest(
   body: unknown,
   correlationId: string | undefined,
-  startTime: number
+  startTime: number,
+  env: Env
 ): Promise<
   | { success: true; relayUrls: string[]; normalizedPubkey: string }
   | { success: false; response: Response }
@@ -395,7 +402,7 @@ async function validateAndNormalizeProfileRequest(
     };
   }
 
-  const relayUrls = normalizeRelayUrls(validatedRequest.relays);
+  const relayUrls = normalizeRelayUrls(validatedRequest.relays, relayOptionsFromEnv(env));
   const pubkey = validatedRequest.pubkey;
 
   if (relayUrls.length === 0 || !pubkey) {
@@ -485,7 +492,8 @@ export async function profileHandler(
     const validationResult = await validateAndNormalizeProfileRequest(
       body,
       correlationId,
-      startTime
+      startTime,
+      env
     );
     if (!validationResult.success) {
       return validationResult.response;
@@ -604,7 +612,9 @@ async function validateBatchEvents(events: unknown[]): Promise<SignedEvent[]> {
   for (const event of events) {
     try {
       const validated = validateSignedEventSchema(event);
-      signedEvents.push(validateSignedEvent(validated));
+      const signed = validateSignedEvent(validated);
+      assertEventSignature(signed);
+      signedEvents.push(signed);
     } catch (error) {
       throw new ValidationError(
         `Invalid event in batch: ${error instanceof Error ? error.message : String(error)}`,
@@ -692,7 +702,7 @@ export async function batchPublishHandler(
     }
 
     // Normalize relays
-    const relayUrls = normalizeRelayUrls(batchRequest.relays);
+    const relayUrls = normalizeRelayUrls(batchRequest.relays, relayOptionsFromEnv(env));
     if (relayUrls.length === 0) {
       throw new ValidationError('No valid relays after normalization', 'relays');
     }

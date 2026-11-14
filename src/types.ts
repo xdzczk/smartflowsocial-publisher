@@ -3,6 +3,15 @@ import type { KVNamespace } from '@cloudflare/workers-types';
 // Environment interface for Cloudflare Workers
 export interface Env {
   API_TOKEN?: string;
+  /**
+   * Set to "true" only for an intentionally public publisher.
+   * Otherwise a missing API_TOKEN rejects publish requests.
+   */
+  ALLOW_UNAUTHENTICATED_PUBLISH?: string;
+  /** Set to "true" to allow relay URLs on private or loopback hosts. */
+  ALLOW_PRIVATE_RELAYS?: string;
+  /** "production" makes a missing API_TOKEN a startup error unless public mode is set. */
+  ENVIRONMENT?: string;
   PROFILES: KVNamespace;
   // Rate limiting configuration (optional)
   RATE_LIMIT_REQUESTS?: string; // Max requests per window (default: 100)

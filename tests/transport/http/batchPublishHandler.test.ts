@@ -21,6 +21,12 @@ vi.mock('../../../src/security/replayProtection', () => ({
   checkAndRecordEvent: vi.fn(async () => false),
 }));
 
+vi.mock('../../../src/security/eventSignature', () => ({
+  assertEventSignature() {
+    /* real signature checks live in tests/security/event-signature.test.ts */
+  },
+}));
+
 vi.mock('../../../src/adapters/nostr/relayAdapter', () => ({
   NostrRelayAdapter: vi.fn(function MockAdapter(this: { url: string }, url: string) {
     this.url = url;

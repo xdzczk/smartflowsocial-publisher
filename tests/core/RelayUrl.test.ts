@@ -120,6 +120,22 @@ describe('RelayUrl', () => {
       expect(result[1]).toBe(RELAY_WITH_PORT);
     });
 
+    it('rejects private, loopback, and credentialed relay URLs', () => {
+      expect(() => normalizeRelayUrls(['wss://127.0.0.1'])).toThrow(/not allowed/);
+      expect(() => normalizeRelayUrls(['wss://localhost'])).toThrow(/not allowed/);
+      expect(() => normalizeRelayUrls(['http://169.254.169.254'])).toThrow(/not allowed/);
+      expect(() => normalizeRelayUrls(['wss://user:pass@relay.example.com'])).toThrow(
+        /not allowed/
+      );
+    });
+
+    it('allows private relay URLs only when explicitly enabled', () => {
+      const result = normalizeRelayUrls(['ws://127.0.0.1:8080'], {
+        allowPrivateNetworks: true,
+      });
+      expect(result).toEqual(['wss://127.0.0.1:8080']);
+    });
+
     it('should handle URLs with paths', () => {
       const RELAY_WITH_PATH1 = `${RELAY_EXAMPLE}/path`;
       const RELAY_WITH_PATH2 = `${RELAY_EXAMPLE}/another/path`;

@@ -51,6 +51,12 @@ vi.mock('../../../src/adapters/nostr/relayAdapter', () => ({
   NostrRelayAdapter: vi.fn(),
 }));
 
+vi.mock('../../../src/security/eventSignature', () => ({
+  assertEventSignature() {
+    /* real signature checks live in tests/security/event-signature.test.ts */
+  },
+}));
+
 const TEST_TOKEN = 'test-token';
 const RELAY1_URL = 'wss://relay1.example.com';
 const TEST_PUBKEY = 'test-pubkey';

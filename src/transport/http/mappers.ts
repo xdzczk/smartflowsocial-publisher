@@ -8,7 +8,7 @@ import {
   ValidationError,
 } from '../../core/errors';
 import { validateSignedEvent } from '../../core/EventValidator';
-import { normalizeRelayUrls } from '../../core/RelayUrl';
+import { normalizeRelayUrls, type NormalizeRelayOptions } from '../../core/RelayUrl';
 import type { PublishOutcome, RelayResult, SignedEvent } from '../../core/types';
 import { sanitizeEvent } from '../../security/sanitizer';
 import { validatePublishRequest } from '../../validation/schemas';
@@ -45,7 +45,10 @@ export interface ErrorResponse {
  * @returns Validated signed event and normalized relay URLs
  * @throws {ValidationError} if request is invalid
  */
-export function parsePublishRequest(body: unknown): {
+export function parsePublishRequest(
+  body: unknown,
+  relayOptions?: NormalizeRelayOptions
+): {
   event: SignedEvent;
   relayUrls: string[];
 } {
@@ -71,7 +74,7 @@ export function parsePublishRequest(body: unknown): {
   // Normalize relays - this can throw ValidationError with field 'relays'
   let relayUrls: string[];
   try {
-    relayUrls = normalizeRelayUrls(validated.relays);
+    relayUrls = normalizeRelayUrls(validated.relays, relayOptions);
   } catch (error) {
     // Re-throw ValidationError as-is, preserving field name from normalizeRelayUrls
     if (error instanceof ValidationError) {

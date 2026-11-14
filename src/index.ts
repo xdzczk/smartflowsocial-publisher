@@ -4,6 +4,7 @@ import { validateEnvironment } from './config/env';
 import { addCorsHeaders, getCorsConfig, handleCorsPreflight } from './middleware/cors';
 import { RateLimiter } from './middleware/rateLimiter';
 import { ConsoleLogger } from './observability/logger';
+import { authorizePublisherRequest } from './security/access';
 import { batchPublishHandler, profileHandler, publishHandler } from './transport/http/handlers';
 import type { Env } from './types';
 
@@ -206,10 +207,8 @@ const handler: ExportedHandler<Env> = {
       return addCorsHeaders(request, rateLimitResponse, corsConfig);
     }
 
-    // Auth check
-    const apiToken = request.headers.get('API-TOKEN');
-    if (apiToken !== env.API_TOKEN && env.API_TOKEN) {
-      const authResponse = new Response('INVALID_TOKEN', { status: 403 });
+    const authResponse = authorizePublisherRequest(request, env, pathname);
+    if (authResponse) {
       return addCorsHeaders(request, authResponse, corsConfig);
     }
 

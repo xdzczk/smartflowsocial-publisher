@@ -35,11 +35,17 @@ export function validateEnvironment(env: Env, logger: { warn: (_warning: string)
     );
   }
 
-  // Validate optional: API_TOKEN
-  if (!env.API_TOKEN) {
+  // Private by default. Public mode must be explicit.
+  const token = env.API_TOKEN?.trim() ?? '';
+  const allowPublic = env.ALLOW_UNAUTHENTICATED_PUBLISH === 'true';
+  if (!token && !allowPublic) {
+    if (env.ENVIRONMENT === 'production') {
+      throw new Error(
+        'API_TOKEN is required in production unless public publishing is explicitly enabled'
+      );
+    }
     logger.warn(
-      'API_TOKEN not set - worker is publicly accessible. ' +
-        'Set API_TOKEN environment variable to protect the worker.'
+      'API_TOKEN is not set. Publish routes fail closed until a token is set or public publishing is explicitly enabled.'
     );
   }
 

@@ -26,6 +26,19 @@ Part of SmartFlowSocial. Related pieces: [app](https://github.com/xdzczk/smartfl
 - [Contributing](#contributing)
 - [License](#license)
 
+## Security model
+
+The publisher is private infrastructure for SmartFlowSocial. Publish routes require `API_TOKEN`
+unless `ALLOW_UNAUTHENTICATED_PUBLISH` is exactly `true`. `GET /health` stays open for probes.
+
+In the default private mode the worker still checks event signatures, limits body size, rate-limits
+callers, and refuses relay URLs on loopback, link-local, and private addresses. Set
+`ALLOW_PRIVATE_RELAYS` to `true` only for local relays. Set `ENVIRONMENT` to `production` on the
+production worker so a missing token fails startup when public mode is off.
+
+Public mode is an explicit choice. It keeps the signature, size, rate-limit, and relay-host checks.
+It is not an open proxy to arbitrary private networks.
+
 ## Features
 
 - **Simple HTTP API**: Publish Nostr events via REST endpoints—no WebSocket complexity
@@ -74,8 +87,11 @@ preview_id = "<your-preview-namespace-id>"
 Create a `.dev.vars` file for local development:
 
 ```bash
-# Optional: Protect your worker
+# Required unless you intentionally run a public publisher.
+# Generate: openssl rand -base64 32
 API_TOKEN=your-secret-token
+# ALLOW_UNAUTHENTICATED_PUBLISH=true
+# ALLOW_PRIVATE_RELAYS=true
 
 # Optional: Enable CORS for browser clients
 CORS_ENABLED=true
