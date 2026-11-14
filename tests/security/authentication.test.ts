@@ -96,4 +96,27 @@ describe('publisher access control', () => {
       )
     ).not.toThrow();
   });
+
+  it('warns outside production and rejects a missing profile namespace', () => {
+    const warnings: string[] = [];
+    const logger = {
+      warn(warning: string) {
+        warnings.push(warning);
+      },
+    };
+    validateEnvironment(env(), logger);
+    validateEnvironment(
+      env({
+        RATE_LIMIT_REQUESTS: '0',
+        CORS_ENABLED: 'true',
+        METRICS_EXPORT_ENABLED: 'true',
+        METRICS_EXPORT_INTERVAL_MS: 'nope',
+      }),
+      logger
+    );
+    expect(warnings.some((warning) => warning.includes('API_TOKEN'))).toBe(true);
+    expect(warnings.some((warning) => warning.includes('CORS_ORIGINS'))).toBe(true);
+    expect(warnings.some((warning) => warning.includes('RATE_LIMIT_REQUESTS'))).toBe(true);
+    expect(() => validateEnvironment({} as unknown as Env, logger)).toThrow(/PROFILES/);
+  });
 });

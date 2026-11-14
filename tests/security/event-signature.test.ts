@@ -1,3 +1,4 @@
+import type { Event } from 'nostr-tools';
 import { finalizeEvent, generateSecretKey } from 'nostr-tools/pure';
 import { describe, expect, it } from 'vitest';
 
@@ -21,5 +22,10 @@ describe('event signature verification', () => {
   it('rejects a hex signature that was not produced by the key', () => {
     const event = createSignedEvent();
     expect(() => assertEventSignature(event)).toThrow(/signature is invalid/);
+  });
+
+  it('rejects an event the verifier cannot parse', () => {
+    const broken = {} as unknown as Event;
+    expect(() => assertEventSignature(broken)).toThrow(/signature is invalid/);
   });
 });

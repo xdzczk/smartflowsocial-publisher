@@ -121,12 +121,35 @@ describe('RelayUrl', () => {
     });
 
     it('rejects private, loopback, and credentialed relay URLs', () => {
-      expect(() => normalizeRelayUrls(['wss://127.0.0.1'])).toThrow(/not allowed/);
-      expect(() => normalizeRelayUrls(['wss://localhost'])).toThrow(/not allowed/);
-      expect(() => normalizeRelayUrls(['http://169.254.169.254'])).toThrow(/not allowed/);
-      expect(() => normalizeRelayUrls(['wss://user:pass@relay.example.com'])).toThrow(
-        /not allowed/
-      );
+      const blocked = [
+        'wss://127.0.0.1',
+        'wss://10.1.2.3',
+        'wss://0.0.0.1',
+        'wss://192.168.1.1',
+        'wss://172.16.0.1',
+        'wss://100.64.0.1',
+        'wss://localhost',
+        'wss://app.localhost',
+        'wss://printer.local',
+        'wss://db.internal',
+        'wss://metadata.google.internal',
+        'wss://2130706433',
+        'wss://[::1]',
+        'wss://[::]',
+        'wss://[fc00::1]',
+        'wss://[fe80::1]',
+        'wss://[::ffff:127.0.0.1]',
+        'http://169.254.169.254',
+        'wss://user:pass@relay.example.com',
+        '   ',
+      ];
+      for (const relay of blocked) {
+        if (relay.trim() === '') {
+          expect(normalizeRelayUrls([relay])).toEqual([]);
+        } else {
+          expect(() => normalizeRelayUrls([relay])).toThrow(/not allowed/);
+        }
+      }
     });
 
     it('allows private relay URLs only when explicitly enabled', () => {
